@@ -23,6 +23,9 @@ parser.add_argument("--vid-name", type=str,
 parser.add_argument("--env", type=str, 
                     default='cleanup',
                     help="Name of the environment to rollout. Can be cleanup or harvest.")
+parser.add_argument("--no-render", action='store_true', 
+                    default=False,
+                    help="Cancel rollout rendering.")
 parser.add_argument("--render-type", type=str, 
                     default='pretty',
                     help="Can be pretty or fast. Implications obvious.")
@@ -87,7 +90,7 @@ class Controller(object):
         return rewards, observations, full_obs
 
     def render_rollout(self, horizon=50, path=None, name=None,
-                       render_type='pretty', fps=8):
+                       render_type='pretty', fps=8, no_render=False):
         """ Render a rollout into a video.
 
         Args:
@@ -96,16 +99,19 @@ class Controller(object):
             render_type: Can be 'pretty' or 'fast'. Impliciations obvious.
             fps: Integer frames per second.
         """
-        if path is None:
-            path = os.path.abspath(os.path.dirname(__file__)) + '/videos'
-            print(path)
-            if not os.path.exists(path):
-                os.makedirs(path)
-        if name is None:
-            video_name = self.env_name + '_trajectory'
-        else:
-            video_name = name
+        if not(no_render):
+            if path is None:
+                path = os.path.abspath(os.path.dirname(__file__)) + '/videos'
+                print(path)
+                if not os.path.exists(path):
+                    os.makedirs(path)
+            if name is None:
+                video_name = self.env_name + '_trajectory'
+            else:
+                video_name = name
 
+        if no_render:
+            rewards, observations, full_obs = self.rollout(horizon=horizon)
         if render_type == 'pretty':
             image_path = os.path.join(path, 'frames/')
             if not os.path.exists(image_path):
@@ -127,7 +133,8 @@ class Controller(object):
 def main():
     c = Controller(env_name=args.env)
     c.render_rollout(path=args.vid_path, name=args.vid_name,
-                     render_type=args.render_type, fps=args.fps)
+                     render_type=args.render_type, fps=args.fps,
+                     no_render=args.no_render)
 
 
 if __name__ == '__main__':
