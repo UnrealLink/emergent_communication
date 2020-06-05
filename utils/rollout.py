@@ -26,13 +26,16 @@ parser.add_argument("--env", type=str,
 parser.add_argument("--no-render", action='store_true', 
                     default=False,
                     help="Cancel rollout rendering.")
+parser.add_argument("--horizon", type=int, 
+                    default=50,
+                    help="Number of frames.")
 parser.add_argument("--render-type", type=str, 
                     default='pretty',
                     help="Can be pretty or fast. Implications obvious.")
 parser.add_argument("--fps", type=int, 
                     default=8,
                     help="Number of frames per second.")
-args = parser.parse_args()
+
 
 
 class Controller(object):
@@ -112,7 +115,7 @@ class Controller(object):
 
         if no_render:
             rewards, observations, full_obs = self.rollout(horizon=horizon)
-        if render_type == 'pretty':
+        elif render_type == 'pretty':
             image_path = os.path.join(path, 'frames/')
             if not os.path.exists(image_path):
                 os.makedirs(image_path)
@@ -131,10 +134,11 @@ class Controller(object):
 
 
 def main():
+    args = parser.parse_args()
     c = Controller(env_name=args.env)
     c.render_rollout(path=args.vid_path, name=args.vid_name,
-                     render_type=args.render_type, fps=args.fps,
-                     no_render=args.no_render)
+                     no_render=args.no_render, horizon=args.horizon,
+                     render_type=args.render_type, fps=args.fps)
 
 
 if __name__ == '__main__':
