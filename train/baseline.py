@@ -27,7 +27,7 @@ parser.add_argument('--train-batch-size', type=int, default=30000,
                     help='Size of the total dataset over which one epoch is computed.')
 parser.add_argument('--checkpoint-frequency', type=int, default=20,
                     help='Number of steps before a checkpoint is saved.')
-parser.add_argument('--training-iterations', type=int, default=10000,
+parser.add_argument('--training-iterations', type=int, default=25,
                     help='Total number of steps to train for')
 parser.add_argument('--num-cpus', type=int, default=2,
                     help='Number of available CPUs')
@@ -90,7 +90,7 @@ def setup(env, hparams, algorithm, train_batch_size, num_cpus, num_gpus,
     config = agent_cls._default_config.copy()
 
     # information for replay
-    config['env_config']['func_create'] = tune.function(env_creator)
+    config['env_config']['func_create'] = env_creator
     config['env_config']['env_name'] = env_name
     config['env_config']['run'] = algorithm
 
@@ -123,7 +123,7 @@ def setup(env, hparams, algorithm, train_batch_size, num_cpus, num_gpus,
                 "entropy_coeff": hparams['entropy_coeff'],
                 "multiagent": {
                     "policies": policies,
-                    "policy_mapping_fn": tune.function(policy_mapping_fn),
+                    "policy_mapping_fn": policy_mapping_fn,
                 },
                 "model" : {
                     "conv_filters":[
@@ -134,6 +134,8 @@ def setup(env, hparams, algorithm, train_batch_size, num_cpus, num_gpus,
                     "use_lstm": True,
                     "lstm_cell_size": 128,
                 },
+                "use_pytorch":True,
+                "use_exec_api": False
     })
     return algorithm, env_name, config
 
