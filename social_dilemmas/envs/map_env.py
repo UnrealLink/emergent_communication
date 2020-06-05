@@ -190,7 +190,7 @@ class MapEnv(MultiAgentEnv):
             agent.grid = map_with_agents
             rgb_arr = self.map_to_colors(agent.get_state(), self.color_map)
             rgb_arr = self.rotate_view(agent.orientation, rgb_arr)
-            observations[agent.agent_id] = rgb_arr / 255
+            observations[agent.agent_id] = rgb_arr
             rewards[agent.agent_id] = agent.compute_reward()
             dones[agent.agent_id] = agent.get_done()
         dones["__all__"] = np.any(list(dones.values()))
@@ -222,7 +222,7 @@ class MapEnv(MultiAgentEnv):
             # agent.grid = util.return_view(map_with_agents, agent.pos,
             #                               agent.row_size, agent.col_size)
             rgb_arr = self.map_to_colors(agent.get_state(), self.color_map)
-            observations[agent.agent_id] = rgb_arr / 255
+            observations[agent.agent_id] = rgb_arr
         return observations
 
     @property
@@ -290,7 +290,7 @@ class MapEnv(MultiAgentEnv):
                 return False
         return True
 
-    def map_to_colors(self, map=None, color_map=None):
+    def map_to_colors(self, map=None, color_map=None, scaled=True, swap_channels=True):
         """Converts a map to an array of RGB values.
         Parameters
         ----------
@@ -313,6 +313,9 @@ class MapEnv(MultiAgentEnv):
             for col_elem in range(map.shape[1]):
                 rgb_arr[row_elem, col_elem, :] = color_map[map[row_elem, col_elem]]
 
+        if scaled:
+            rgb_arr = rgb_arr / 255
+
         return rgb_arr
 
     def render(self, filename=None):
@@ -324,7 +327,7 @@ class MapEnv(MultiAgentEnv):
         """
         map_with_agents = self.get_map_with_agents()
 
-        rgb_arr = self.map_to_colors(map_with_agents)
+        rgb_arr = self.map_to_colors(map_with_agents, scaled=True)
         plt.imshow(rgb_arr, interpolation='nearest')
         if filename is None:
             plt.show()
