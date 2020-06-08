@@ -1,5 +1,5 @@
 """Defines a multi-agent controller to rollout environment episodes w/
-   agent policies."""
+   random agent policies."""
 
 import numpy as np
 import os

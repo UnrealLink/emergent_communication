@@ -290,7 +290,7 @@ class MapEnv(MultiAgentEnv):
                 return False
         return True
 
-    def map_to_colors(self, map=None, color_map=None, scaled=True, swap_channels=True):
+    def map_to_colors(self, map=None, color_map=None, scaled=False, swap_channels=True):
         """Converts a map to an array of RGB values.
         Parameters
         ----------
@@ -327,7 +327,7 @@ class MapEnv(MultiAgentEnv):
         """
         map_with_agents = self.get_map_with_agents()
 
-        rgb_arr = self.map_to_colors(map_with_agents, scaled=True)
+        rgb_arr = self.map_to_colors(map_with_agents)
         plt.imshow(rgb_arr, interpolation='nearest')
         if filename is None:
             plt.show()
