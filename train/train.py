@@ -5,15 +5,17 @@ import os
 import sys
 import shutil
 import argparse
+import logging
 from tqdm import tqdm
+import matplotlib.pyplot as plt
 
 import utils.utility_funcs as utility_funcs
 
 from social_dilemmas.envs.cleanup import CleanupEnv
 from social_dilemmas.envs.harvest import HarvestEnv
+from social_dilemmas.envs.finder import FinderEnv
 
 from algorithms.DQN import DQNAgent
-
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--env", type=str, 
@@ -38,6 +40,9 @@ class Controller(object):
         elif env_name == 'cleanup':
             print('Initializing Cleanup environment')
             self.env = CleanupEnv(num_agents=num_agents, render=False)
+        elif env_name == 'finder':
+            print('Initializing Finder environment')
+            self.env = FinderEnv(num_agents=num_agents, render=True)
         else:
             print('Error! Not a valid environment type')
             return
@@ -53,11 +58,16 @@ class Controller(object):
         Args:
             horizon: The number of timesteps to roll out.
         """
-        reward_hist = []
-
+        times = []
+        timer = 0
         obs, rewards, dones, info, = self.env.reset(), {}, {}, {}
 
+        x_data = []
+        y_data = []
+        plt.plot(x_data, y_data)
+
         for i in tqdm(range(horizon)):
+            timer += 1
             actions = {f"agent-{i}":self.agents_policies[f"agent-{i}"].step(
                 obs[f"agent-{i}"],
                 rewards.get(f"agent-{i}", 0),
@@ -69,17 +79,54 @@ class Controller(object):
                 agent_policy.optimize()
 
             obs, rewards, dones, info, = self.env.step(actions)
+            
+            if rewards['agent-0'] > 0:
+                times.append(timer)
+                timer = 0
+                if len(times)%10 == 0:
+                    x_data.append(len(times)/10)
+                    y_data.append(np.mean(times[-10:]))
+                    plt.gca().lines[0].set_xdata(x_data)
+                    plt.gca().lines[0].set_ydata(y_data)
+                    plt.gca().relim()
+                    plt.gca().autoscale_view()
+                    plt.pause(0.05)
 
-            reward_hist.append(rewards['agent-0'])
+        plt.show()
+        self.agents_policies['agent-0'].save()
+        return times
 
-        return reward_hist
+    def render_rollout(self):
+
+        eval_horizon = 50
+        shape = self.env.world_map.shape
+        full_obs = [np.zeros((shape[0], shape[1], 3), dtype=np.uint8) for i in range(eval_horizon)]
+        
+        obs, rewards, dones, info, = self.env.reset(), {}, {}, {}
+
+        for i in tqdm(range(eval_horizon)):
+            actions = {f"agent-{i}":self.agents_policies[f"agent-{i}"].step(
+                obs[f"agent-{i}"],
+                rewards.get(f"agent-{i}", 0),
+                dones.get(f"agent-{i}", False),
+                info,
+            ) for i in range(self.num_agents)}
+
+            obs, rewards, dones, info, = self.env.step(actions)
+
+            rgb_arr = self.env.map_to_colors()
+            full_obs[i] = rgb_arr.astype(np.uint8)
+
+        path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..')) + '/videos'
+        print(path)
+        utility_funcs.make_video_from_rgb_imgs(full_obs, path, fps=8, video_name='eval')
 
 
 def main():
     args = parser.parse_args()
     controller = Controller(env_name=args.env, num_agents=args.agents)
-    rewards = controller.rollout(horizon=args.horizon)
-    print(np.mean(np.array(rewards).reshape(-1, 100), axis=1))
+    times = controller.rollout(horizon=args.horizon)
+    controller.render_rollout()
 
 
 if __name__ == '__main__':

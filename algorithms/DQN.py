@@ -3,6 +3,7 @@
 import gym
 import math
 import random
+import logging
 import numpy as np
 from collections import namedtuple
 
@@ -23,8 +24,8 @@ BATCH_SIZE = 128
 GAMMA = 0.999
 EPS_START = 0.9
 EPS_END = 0.05
-EPS_DECAY = 200
-TARGET_UPDATE = 10
+EPS_DECAY = 1000
+TARGET_UPDATE = 500
 
 # Replay Buffer
 
@@ -63,27 +64,30 @@ class ValueNetwork(nn.Module):
     Deep Q Network
     """
 
-    def __init__(self, input_size, outputs, input_channels=3):
+    def __init__(self, input_size, outputs, input_channels=3, hidden_size = 64):
         super(ValueNetwork, self).__init__()
         self.conv1 = nn.Conv2d(input_channels, 6, kernel_size=3, stride=1)
         self.bn1 = nn.BatchNorm2d(6)
         self.conv2 = nn.Conv2d(6, 12, kernel_size=3, stride=1)
         self.bn2 = nn.BatchNorm2d(12)
+        self.conv3 = nn.Conv2d(12, 24, kernel_size=3, stride=1)
+        self.bn3 = nn.BatchNorm2d(24)
 
         def conv2d_size_out(size, kernel_size = 3, stride = 1):
             return (size - (kernel_size - 1) - 1) // stride  + 1
 
-        convw = conv2d_size_out(conv2d_size_out(input_size[0]))
-        convh = conv2d_size_out(conv2d_size_out(input_size[1]))
-        linear_input_size = convw * convh * 12
+        convw = conv2d_size_out(conv2d_size_out(conv2d_size_out(input_size[0])))
+        convh = conv2d_size_out(conv2d_size_out(conv2d_size_out(input_size[1])))
+        linear_input_size = convw * convh * 24
 
-        self.head = nn.Linear(linear_input_size, outputs)
-
+        self.hidden = nn.Linear(linear_input_size, hidden_size)
+        self.head = nn.Linear(hidden_size, outputs)
 
     def forward(self, x):
         x = F.relu(self.bn1(self.conv1(x)))
         x = F.relu(self.bn2(self.conv2(x)))
-        return self.head(x.view(x.size(0), -1))
+        x = F.relu(self.bn3(self.conv3(x)))
+        return self.head(F.relu(self.hidden(x.view(x.size(0), -1))))
 
 
 class DQNAgent(BaseTrainer):
@@ -117,7 +121,6 @@ class DQNAgent(BaseTrainer):
         sample = random.random()
         eps_threshold = EPS_END + (EPS_START - EPS_END) * \
             math.exp(-1. * self.steps_done / EPS_DECAY)
-        self.steps_done += 1
         if sample > eps_threshold:
             with torch.no_grad():
                 # t.max(1) will return largest column value of each row.
@@ -125,7 +128,7 @@ class DQNAgent(BaseTrainer):
                 # found, so we pick action with the larger expected reward.
                 return self.policy_net(state).max(1)[1].view(1, 1)
         else:
-            return torch.tensor([[random.randrange(self.n_actions)]], device=device, dtype=torch.float)
+            return torch.tensor([[random.randrange(self.n_actions)]], device=device, dtype=torch.long)
 
     def optimize(self):
         """
@@ -170,28 +173,33 @@ class DQNAgent(BaseTrainer):
         for param in self.policy_net.parameters():
             param.grad.data.clamp_(-1, 1)
         self.optimizer.step()
-
+        
         # Update target net
-        if self.steps_done % TARGET_UPDATE:
+        if self.steps_done % TARGET_UPDATE == 0:
             self.target_net.load_state_dict(self.policy_net.state_dict())
 
 
-    def step(self, obs, reward, done, info={}):
+    def step(self, obs, reward, done, info={}, preprocessing=True):
         """
         
         """
-
-        state = preprocess_obs(obs)
+        if preprocessing:
+            state = preprocess_obs(obs)
+        else:
+            state = obs
         reward = torch.tensor([reward], device=device)
 
-        if self.last_state:
+        if self.last_state is not None:
             self.memory.push(self.last_state, self.last_action, state, reward)
 
         action = self.select_action(state)
+        self.steps_done += 1
         self.last_action = action
-
+        self.last_state = state
         return action.detach().item()
 
+    def save(self):
+        torch.save(self.policy_net.state_dict(), f'saves/finder_model_{self.steps_done}.pth')
     
 
 # Utils

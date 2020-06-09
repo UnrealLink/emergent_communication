@@ -116,3 +116,5 @@ dmypy.json
 # project specific
 /videos
 /videos/*
+/saves
+/saves/*

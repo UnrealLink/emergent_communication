@@ -11,6 +11,7 @@ import utils.utility_funcs as utility_funcs
 
 from social_dilemmas.envs.cleanup import CleanupEnv
 from social_dilemmas.envs.harvest import HarvestEnv
+from social_dilemmas.envs.finder import FinderEnv
 
 
 parser = argparse.ArgumentParser()
@@ -48,6 +49,9 @@ class Controller(object):
         elif env_name == 'cleanup':
             print('Initializing Cleanup environment')
             self.env = CleanupEnv(num_agents=5, render=True)
+        elif env_name == 'finder':
+            print('Initializing Finder environment')
+            self.env = FinderEnv(num_agents=5, render=True)
         else:
             print('Error! Not a valid environment type')
             return
