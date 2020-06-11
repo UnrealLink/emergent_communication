@@ -5,7 +5,8 @@ import random
 
 import matplotlib.pyplot as plt
 import numpy as np
-from ray.rllib.env import MultiAgentEnv
+import gym
+# from ray.rllib.env import MultiAgentEnv
 
 ACTIONS = {'MOVE_LEFT': [-1, 0],  # Move left
            'MOVE_RIGHT': [1, 0],  # Move right
@@ -56,9 +57,9 @@ DEFAULT_COLOURS = {' ': [0, 0, 0],  # Black background
 #         |
 
 
-class MapEnv(MultiAgentEnv):
+class MapEnv(gym.Env):
 
-    def __init__(self, ascii_map, num_agents=1, render=True, color_map=None):
+    def __init__(self, ascii_map, num_agents=1, render=True, color_map=None, max_steps=1000):
         """
 
         Parameters
@@ -94,6 +95,9 @@ class MapEnv(MultiAgentEnv):
                 elif self.base_map[row, col] == '@':
                     self.wall_points.append([row, col])
         self.setup_agents()
+
+        self.steps_count = 0
+        self.max_steps = max_steps
 
     def custom_reset(self):
         """Reset custom elements of the map. For example, spawn apples and build walls"""
@@ -143,6 +147,10 @@ class MapEnv(MultiAgentEnv):
                 arr[row, col] = ascii_list[row][col]
         return arr
 
+    def seed(self, seed):
+        random.seed(seed)
+        np.random.seed(seed)
+
     def step(self, actions):
         """Takes in a dict of actions and converts them to a map update
 
@@ -159,6 +167,8 @@ class MapEnv(MultiAgentEnv):
         dones: dict indicating whether each agent is done
         info: dict to pass extra info to gym
         """
+
+        self.steps_count += 1
 
         self.beam_pos = []
         agent_actions = {}
@@ -192,7 +202,7 @@ class MapEnv(MultiAgentEnv):
             rgb_arr = self.rotate_view(agent.orientation, rgb_arr)
             observations[agent.agent_id] = rgb_arr
             rewards[agent.agent_id] = agent.compute_reward()
-            dones[agent.agent_id] = agent.get_done()
+            dones[agent.agent_id] = agent.get_done() or self.steps_count > self.max_steps
         dones["__all__"] = np.any(list(dones.values()))
         return observations, rewards, dones, info
 
@@ -213,6 +223,7 @@ class MapEnv(MultiAgentEnv):
         self.setup_agents()
         self.reset_map()
         self.custom_map_update()
+        self.steps_count = 0
 
         map_with_agents = self.get_map_with_agents()
 

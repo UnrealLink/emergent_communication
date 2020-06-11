@@ -174,7 +174,7 @@ class HarvestAgent(Agent):
 
     @property
     def observation_space(self):
-        return Box(low=0.0, high=1.0, shape=(2 * self.view_len + 1,
+        return Box(low=0.0, high=255.0, shape=(2 * self.view_len + 1,
                                              2 * self.view_len + 1, 3), dtype=np.float32)
 
     def hit(self, char):
@@ -218,7 +218,7 @@ class CleanupAgent(Agent):
 
     @property
     def observation_space(self):
-        return Box(low=0.0, high=1.0, shape=(2 * self.view_len + 1,
+        return Box(low=0.0, high=255.0, shape=(2 * self.view_len + 1,
                                              2 * self.view_len + 1, 3), dtype=np.float32)
 
     # Ugh, this is gross, this leads to the actions basically being
@@ -274,7 +274,7 @@ class FinderAgent(Agent):
 
     @property
     def observation_space(self):
-        return Box(low=0.0, high=1.0, shape=(2 * self.view_len + 1,
+        return Box(low=0.0, high=255.0, shape=(2 * self.view_len + 1,
                                              2 * self.view_len + 1, 3), dtype=np.float32)
 
     # def hit(self, char):
@@ -291,10 +291,10 @@ class FinderAgent(Agent):
     def consume(self, char):
         """Defines how an agent interacts with the char it is standing on"""
         if char == 'A':
-            self.reward_this_turn += 10.
+            self.reward_this_turn += 1.
             self.consumed = True
             return ' '
         else:
-            self.reward_this_turn += -0.1
+            # self.reward_this_turn += -0.1
             return char
 

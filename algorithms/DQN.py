@@ -13,7 +13,6 @@ import torch.optim as optim
 import torch.nn.functional as F
 import torchvision.transforms as T
 
-from algorithms.base import BaseTrainer
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -90,7 +89,7 @@ class ValueNetwork(nn.Module):
         return self.head(F.relu(self.hidden(x.view(x.size(0), -1))))
 
 
-class DQNAgent(BaseTrainer):
+class DQNAgent():
     """
     DQN Agent
     """
@@ -113,6 +112,8 @@ class DQNAgent(BaseTrainer):
         self.last_action = None
 
         self.steps_done = 0
+
+        self.eval_mode = False
 
     def select_action(self, state):
         """
@@ -193,14 +194,32 @@ class DQNAgent(BaseTrainer):
             self.memory.push(self.last_state, self.last_action, state, reward)
 
         action = self.select_action(state)
-        self.steps_done += 1
-        self.last_action = action
-        self.last_state = state
+        if not(self.eval_mode):
+            self.steps_done += 1
+            self.last_action = action
+            self.last_state = state
         return action.detach().item()
 
-    def save(self):
-        torch.save(self.policy_net.state_dict(), f'saves/finder_model_{self.steps_done}.pth')
+    def save(self, path=''):
+        if path:
+            torch.save(self.policy_net.state_dict(), path)
+        else:
+            torch.save(self.policy_net.state_dict(), f'saves/finder_model_{self.steps_done}.pth')
+
+    def load(self, path):
+        self.policy_net.load_state_dict(torch.load(path))
+        self.target_net.load_state_dict(self.policy_net.state_dict())
     
+    def eval(self):
+        self.eval_mode = True
+        self.policy_net.eval()
+    
+    def train(self):
+        self.eval_mode = False
+        self.policy_net.train()
+        self.last_action = None
+        self.last_state = None
+
 
 # Utils
 

@@ -1,0 +1,99 @@
+import numpy as np
+import os
+import sys
+import shutil
+import argparse
+import logging
+from tqdm import tqdm
+import matplotlib.pyplot as plt
+
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+import torch.multiprocessing as mp
+
+import utils.utility_funcs as utility_funcs
+
+from social_dilemmas.envs.cleanup import CleanupEnv
+from social_dilemmas.envs.harvest import HarvestEnv
+from social_dilemmas.envs.finder import FinderEnv
+
+from algorithms.A3C import A3CPolicy, SharedAdam, train
+
+
+os.environ['OMP_NUM_THREADS'] = '1'
+
+env_map = {
+    'finder': FinderEnv,
+    'harvest': HarvestEnv,
+    'cleanup': CleanupEnv,
+}
+
+
+def get_args():
+    parser = argparse.ArgumentParser(description=None)
+    parser.add_argument('--env', default='finder', type=str, help='environment name')
+    parser.add_argument('--agents', default=5, type=int, help='number of agents in environment')
+    parser.add_argument('--processes', default=20, type=int, help='number of processes to train with')
+    parser.add_argument('--render', default=False, action='store_true', help='renders the atari environment')
+    parser.add_argument('--test', default=False, action='store_true', help='sets lr=0, chooses most likely actions')
+    parser.add_argument('--rnn_steps', default=20, type=int, help='steps to train LSTM over')
+    parser.add_argument('--lr', default=1e-4, type=float, help='learning rate')
+    parser.add_argument('--seed', default=1, type=int, help='seed random # generators (for reproducibility)')
+    parser.add_argument('--gamma', default=0.99, type=float, help='rewards discount factor')
+    parser.add_argument('--tau', default=1.0, type=float, help='generalized advantage estimation discount')
+    parser.add_argument('--horizon', default=0.99, type=float, help='horizon for running averages')
+    parser.add_argument('--hidden', default=256, type=int, help='hidden size of GRU')
+    return parser.parse_args()
+
+
+if __name__ == "__main__":
+    mp.set_start_method('spawn') # this must not be in global scope
+    
+    args = get_args()
+    dir_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+    args.save_dir = os.path.join(dir_path, f'saves/{args.env}') # keep the directory structure simple
+    if args.render:  args.processes = 1 ; args.test = True # render mode -> test mode w one process
+    if args.test:  args.lr = 0 # don't train in render mode
+
+    args.env_maker = env_map[args.env]
+    single_env = args.env_maker(num_agents=1)
+    args.num_actions = single_env.action_space.n # get the action space of this game
+    if not os.path.exists(args.save_dir):
+        os.makedirs(args.save_dir) # make dir to save models etc.
+
+    logging.basicConfig(filename=os.path.join(args.save_dir, 'log.txt'), 
+                        level=logging.DEBUG)
+
+    logging.debug("Creating shared models and optimizers.")
+    torch.manual_seed(args.seed)
+    shared_models = {
+        f'agent-{i}': A3CPolicy(channels=3, 
+                               memsize=args.hidden, 
+                               num_actions=args.num_actions).share_memory()
+        for i in range(args.agents)
+    }
+    shared_optimizers = {
+        f'agent-{i}': SharedAdam(shared_models[f'agent-{i}'].parameters(), lr=args.lr)
+        for i in range(args.agents)
+    }
+
+    info = {
+        info_name: torch.DoubleTensor([0]).share_memory_() 
+        for info_name in ['run_epr', 'run_loss', 'episodes', 'frames']
+    }
+
+    logging.debug("Loading previous shared models parameters.")
+    frames = []
+    for agent_name, shared_model in shared_models.items():
+        frames.append(shared_model.try_load(args.save_dir, agent_name) * 1e5)
+    if min(frames) != max(frames):
+        logging.warning("Loaded models do not have the same number of training frames between agents")
+    info['frames'] += max(frames)
+    
+    logging.debug("Launching processes...")
+    processes = []
+    for rank in range(args.processes):
+        p = mp.Process(target=train, args=(shared_models, shared_optimizers, rank, args, info))
+        p.start() ; processes.append(p)
+    for p in processes: p.join()

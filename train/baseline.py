@@ -9,9 +9,9 @@ from ray.rllib.agents.registry import get_agent_class
 from ray.rllib.agents.ppo.ppo_tf_policy import PPOTFPolicy
 
 from social_dilemmas.envs.harvest import HarvestEnv
+from social_dilemmas.envs.finder import FinderEnv
 from social_dilemmas.envs.cleanup import CleanupEnv
 
-from models.base_model import BaseModel
 
 parser = argparse.ArgumentParser()
 
@@ -45,6 +45,11 @@ harvest_default_params = {
     'lr_final': 0.000028,
     'entropy_coeff': .000687}
 
+finder_default_params = {
+    'lr_init': 0.00136,
+    'lr_final': 0.000028,
+    'entropy_coeff': .000687}
+
 cleanup_default_params = {
     'lr_init': 0.00126,
     'lr_final': 0.000012,
@@ -59,6 +64,10 @@ def setup(env, hparams, algorithm, train_batch_size, num_cpus, num_gpus,
         def env_creator(_):
             return HarvestEnv(num_agents=num_agents)
         single_env = HarvestEnv()
+    elif env == 'finder':
+        def env_creator(_):
+            return FinderEnv(num_agents=num_agents)
+        single_env = FinderEnv()
     else:
         def env_creator(_):
             return CleanupEnv(num_agents=num_agents)
@@ -145,6 +154,8 @@ def main():
     ray.init(num_cpus=args.num_cpus)
     if args.env == 'harvest':
         hparams = harvest_default_params
+    elif args.env == 'finder':
+        hparams = finder_default_params
     else:
         hparams = cleanup_default_params
     alg_run, env_name, config = setup(args.env, hparams, args.algorithm,
