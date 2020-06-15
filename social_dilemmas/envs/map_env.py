@@ -6,7 +6,6 @@ import random
 import matplotlib.pyplot as plt
 import numpy as np
 import gym
-# from ray.rllib.env import MultiAgentEnv
 
 ACTIONS = {'MOVE_LEFT': [-1, 0],  # Move left
            'MOVE_RIGHT': [1, 0],  # Move right
@@ -329,7 +328,7 @@ class MapEnv(gym.Env):
 
         return rgb_arr
 
-    def render(self, filename=None):
+    def render(self, filename=None, time=None):
         """ Creates an image of the map to plot or save.
 
         Args:
@@ -338,9 +337,16 @@ class MapEnv(gym.Env):
         """
         map_with_agents = self.get_map_with_agents()
 
+        if time is not None:
+            fig = plt.figure()
+            timer = fig.canvas.new_timer(interval = time) #creating a timer object and setting an interval of 3000 milliseconds
+            timer.add_callback(plt.close)
+
         rgb_arr = self.map_to_colors(map_with_agents)
         plt.imshow(rgb_arr, interpolation='nearest')
         if filename is None:
+            if time is not None:
+                timer.start()
             plt.show()
         else:
             plt.savefig(filename)

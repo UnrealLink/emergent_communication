@@ -2,6 +2,7 @@ import cv2
 import os
 import matplotlib.pyplot as plt
 import numpy as np
+import logging
 
 
 def save_img(rgb_arr, path, name):
@@ -110,3 +111,14 @@ def pad_matrix(left_pad, right_pad, top_pad, bot_pad, matrix, const_val=1):
     pad_mat = np.pad(matrix, ((left_pad, right_pad), (top_pad, bot_pad)),
                      'constant', constant_values=(const_val, const_val))
     return pad_mat
+
+def setup_logger(logger, args):
+    logger.setLevel(logging.DEBUG)
+
+    file_log = logging.FileHandler(filename=os.path.join(args.save_dir, 'log.txt'))
+    file_log.setLevel(logging.DEBUG)
+    logger.addHandler(file_log)
+
+    console_log = logging.StreamHandler()
+    console_log.setLevel(logging.INFO)
+    logger.addHandler(console_log)

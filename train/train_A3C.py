@@ -34,7 +34,7 @@ def get_args():
     parser = argparse.ArgumentParser(description=None)
     parser.add_argument('--env', default='finder', type=str, help='environment name')
     parser.add_argument('--agents', default=5, type=int, help='number of agents in environment')
-    parser.add_argument('--processes', default=20, type=int, help='number of processes to train with')
+    parser.add_argument('--processes', default=8, type=int, help='number of processes to train with')
     parser.add_argument('--render', default=False, action='store_true', help='renders the atari environment')
     parser.add_argument('--test', default=False, action='store_true', help='sets lr=0, chooses most likely actions')
     parser.add_argument('--rnn_steps', default=20, type=int, help='steps to train LSTM over')
@@ -62,10 +62,10 @@ if __name__ == "__main__":
     if not os.path.exists(args.save_dir):
         os.makedirs(args.save_dir) # make dir to save models etc.
 
-    logging.basicConfig(filename=os.path.join(args.save_dir, 'log.txt'), 
-                        level=logging.DEBUG)
+    logger = logging.getLogger('A3C' + args.env)
+    utility_funcs.setup_logger(logger, args)
 
-    logging.debug("Creating shared models and optimizers.")
+    logger.info("Creating shared models and optimizers.")
     torch.manual_seed(args.seed)
     shared_models = {
         f'agent-{i}': A3CPolicy(channels=3, 
@@ -77,23 +77,28 @@ if __name__ == "__main__":
         f'agent-{i}': SharedAdam(shared_models[f'agent-{i}'].parameters(), lr=args.lr)
         for i in range(args.agents)
     }
+    shared_schedulers = {
+        f'agent-{i}': torch.optim.lr_scheduler.StepLR(shared_optimizers[f'agent-{i}'],
+                                                      step_size=32, gamma=0.1)
+        for i in range(args.agents)
+    }
 
     info = {
         info_name: torch.DoubleTensor([0]).share_memory_() 
         for info_name in ['run_epr', 'run_loss', 'episodes', 'frames']
     }
 
-    logging.debug("Loading previous shared models parameters.")
+    logger.info("Loading previous shared models parameters.")
     frames = []
     for agent_name, shared_model in shared_models.items():
         frames.append(shared_model.try_load(args.save_dir, agent_name) * 1e5)
     if min(frames) != max(frames):
-        logging.warning("Loaded models do not have the same number of training frames between agents")
+        logger.warning("Loaded models do not have the same number of training frames between agents")
     info['frames'] += max(frames)
     
-    logging.debug("Launching processes...")
+    logger.info("Launching processes...")
     processes = []
     for rank in range(args.processes):
-        p = mp.Process(target=train, args=(shared_models, shared_optimizers, rank, args, info))
+        p = mp.Process(target=train, args=(shared_models, shared_optimizers, shared_schedulers, rank, args, info))
         p.start() ; processes.append(p)
     for p in processes: p.join()

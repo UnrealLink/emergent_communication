@@ -15,6 +15,8 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torch.multiprocessing as mp
 
+import utils.utility_funcs as utility_funcs
+
 os.environ['OMP_NUM_THREADS'] = '1'
 
 
@@ -37,14 +39,17 @@ class A3CPolicy(nn.Module): # an actor-critic neural network
         hx = self.gru(x.view(-1, 32 * 5 * 5), (hx))
         return self.critic_linear(hx), self.actor_linear(hx), hx
 
-    def try_load(self, save_dir, agent_name):
+    def try_load(self, save_dir, agent_name, logger=None):
         paths = glob.glob(os.path.join(save_dir, f'*.{agent_name}.*.tar'))
         step = 0
         if len(paths) > 0:
             ckpts = [int(s.split('.')[-2]) for s in paths]
             ix = np.argmax(ckpts) ; step = ckpts[ix]
             self.load_state_dict(torch.load(paths[ix]))
-        print("\tno saved models") if step == 0 else print("\tloaded model: {}".format(paths[ix]))
+        if logger is None:
+            print("\tno saved models") if step == 0 else print("\tloaded model: {}".format(paths[ix]))
+        else:
+            logger.info("\tno saved models") if step == 0 else print("\tloaded model: {}".format(paths[ix]))
         return step
 
 
@@ -86,10 +91,11 @@ def cost_func(args, values, logps, actions, rewards):
     return policy_loss + 0.5 * value_loss - 0.01 * entropy_loss
 
 
-def train(shared_models, shared_optimizers, rank, args, info):
-    logging.basicConfig(filename=os.path.join(args.save_dir, 'log.txt'), 
-                        level=logging.DEBUG)
-    
+def train(shared_models, shared_optimizers, shared_schedulers, rank, args, info):
+    logger = logging.getLogger('A3C' + args.env)
+    utility_funcs.setup_logger(logger, args)
+
+    logger.info(f"Process {rank} started")
     env = args.env_maker(num_agents=args.agents) # make a local (unshared) environment
     env.seed(args.seed + rank) ; torch.manual_seed(args.seed + rank) # seed everything
     models = {
@@ -157,7 +163,7 @@ def train(shared_models, shared_optimizers, rank, args, info):
             
             obs, rewards, dones, _ = env.step(actions)
             
-            if args.render: env.render()
+            if args.render: env.render(time=1000)
 
             states = {
                 agent_name: preprocess_obs(ob)
@@ -176,8 +182,8 @@ def train(shared_models, shared_optimizers, rank, args, info):
             
             info['frames'].add_(1) ; num_frames = int(info['frames'].item())
 
-            if num_frames % 2e5 == 0: # save every 2M frames
-                logging.info(f"{num_frames/1e6:.2f}M frames: saving models as \
+            if num_frames % 2e5 == 0: # save every 0.2M frames
+                logger.info(f"{num_frames/1e6:.2f}M frames: saving models as \
                                model.<agent_name>.{num_frames/1e5:.0f}.tar")
                 for agent_name, shared_model in shared_models.items():
                     torch.save(shared_model.state_dict(),
@@ -185,15 +191,15 @@ def train(shared_models, shared_optimizers, rank, args, info):
 
             if dones["__all__"]: # update shared data
                 info['episodes'] += 1
-                interp = 1 if info['episodes'][0] == 1 else 1 - args.horizon
+                interp = 1 if info['episodes'][0] == 1 else args.horizon
                 info['run_epr'].mul_(1-interp).add_(interp * epr)
                 info['run_loss'].mul_(1-interp).add_(interp * eploss)
 
             if rank == 0 and time.time() - last_disp_time > 60: # print info ~ every minute
                 elapsed = time.strftime("%Hh %Mm %Ss", time.gmtime(time.time() - start_time))
-                logging.info(f"time {elapsed}, episodes {info['episodes'].item():.0f}, \
-                               frames {num_frames/1e6:.2f}M, mean epr {info['run_epr'].item():.2f}, \
-                               run loss {info['run_loss'].item():.2f}")
+                logger.info(f"time {elapsed}, episodes {info['episodes'].item():.0f}, " +
+                            f"frames {num_frames/1e6:.2f}M, mean epr {info['run_epr'].item():.2f}, " +
+                            f"run loss {info['run_loss'].item():.2f}")
                 last_disp_time = time.time()
 
             if dones["__all__"]: # maybe print info.
@@ -225,6 +231,9 @@ def train(shared_models, shared_optimizers, rank, args, info):
             for param, shared_param in zip(models[agent_name].parameters(), shared_models[agent_name].parameters()):
                 if shared_param.grad is None: shared_param._grad = param.grad # sync gradients with shared model
             shared_optimizers[agent_name].step()
+            if dones["__all__"]:
+                shared_schedulers[agent_name].step()
+
 
 
 # Utils
