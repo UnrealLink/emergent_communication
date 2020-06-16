@@ -20,7 +20,7 @@ import utils.utility_funcs as utility_funcs
 os.environ['OMP_NUM_THREADS'] = '1'
 
 
-class A3CPolicy(nn.Module): # an actor-critic neural network
+class A3CPolicy(nn.Module):  # an actor-critic neural network
     def __init__(self, channels, memsize, num_actions, communication=False, message_size=0, n_agents=5):
         super(A3CPolicy, self).__init__()
         self.communication = communication
@@ -56,31 +56,40 @@ class A3CPolicy(nn.Module): # an actor-critic neural network
         step = 0
         if len(paths) > 0:
             ckpts = [int(s.split('.')[-2]) for s in paths]
-            ix = np.argmax(ckpts) ; step = ckpts[ix]
+            ix = np.argmax(ckpts)
+            step = ckpts[ix]
             self.load_state_dict(torch.load(paths[ix]))
         if logger is None:
-            print("\tno saved models") if step == 0 else print("\tloaded model: {}".format(paths[ix]))
+            print("\tno saved models") if step == 0 else print(
+                "\tloaded model: {}".format(paths[ix]))
         else:
-            logger.info("\tno saved models") if step == 0 else print("\tloaded model: {}".format(paths[ix]))
+            logger.info("\tno saved models") if step == 0 else print(
+                "\tloaded model: {}".format(paths[ix]))
         return step
 
 
-class SharedAdam(torch.optim.Adam): # extend a pytorch optimizer so it shares grads across processes
+# extend a pytorch optimizer so it shares grads across processes
+class SharedAdam(torch.optim.Adam):
     def __init__(self, params, lr=1e-3, betas=(0.9, 0.999), eps=1e-8, weight_decay=0):
         super(SharedAdam, self).__init__(params, lr, betas, eps, weight_decay)
         for group in self.param_groups:
             for p in group['params']:
                 state = self.state[p]
-                state['shared_steps'], state['step'] = torch.zeros(1).share_memory_(), 0
-                state['exp_avg'] = p.data.new().resize_as_(p.data).zero_().share_memory_()
-                state['exp_avg_sq'] = p.data.new().resize_as_(p.data).zero_().share_memory_()
-                
+                state['shared_steps'], state['step'] = torch.zeros(
+                    1).share_memory_(), 0
+                state['exp_avg'] = p.data.new().resize_as_(
+                    p.data).zero_().share_memory_()
+                state['exp_avg_sq'] = p.data.new().resize_as_(
+                    p.data).zero_().share_memory_()
+
         def step(self, closure=None):
             for group in self.param_groups:
                 for p in group['params']:
-                    if p.grad is None: continue
+                    if p.grad is None:
+                        continue
                     self.state[p]['shared_steps'] += 1
-                    self.state[p]['step'] = self.state[p]['shared_steps'][0] - 1 # a "step += 1"  comes later
+                    # a "step += 1"  comes later
+                    self.state[p]['step'] = self.state[p]['shared_steps'][0] - 1
             super.step(closure)
 
 
@@ -89,17 +98,19 @@ def cost_func(args, values, logps, actions, rewards):
 
     # generalized advantage estimation using \delta_t residuals (a policy gradient method)
     delta_t = np.asarray(rewards) + args.gamma * np_values[1:] - np_values[:-1]
-    logpys = logps.gather(1, actions.clone().detach().view(-1,1))
+    logpys = logps.gather(1, actions.clone().detach().view(-1, 1))
     gen_adv_est = discount(delta_t, args.gamma * args.tau)
-    policy_loss = -(logpys.view(-1) * torch.FloatTensor(gen_adv_est.copy())).sum()
-    
+    policy_loss = -(logpys.view(-1) *
+                    torch.FloatTensor(gen_adv_est.copy())).sum()
+
     # l2 loss over value estimator
     rewards[-1] += args.gamma * np_values[-1]
     discounted_r = discount(np.asarray(rewards), args.gamma)
     discounted_r = torch.tensor(discounted_r.copy(), dtype=torch.float32)
-    value_loss = .5 * (discounted_r - values[:-1,0]).pow(2).sum()
+    value_loss = .5 * (discounted_r - values[:-1, 0]).pow(2).sum()
 
-    entropy_loss = (-logps * torch.exp(logps)).sum() # entropy definition, for entropy regularization
+    # entropy definition, for entropy regularization
+    entropy_loss = (-logps * torch.exp(logps)).sum()
     return policy_loss + 0.5 * value_loss - 0.01 * entropy_loss
 
 
@@ -108,37 +119,43 @@ def train(shared_models, shared_optimizers, shared_schedulers, rank, args, info)
     utility_funcs.setup_logger(logger, args)
 
     logger.info(f"Process {rank} started")
-    env = args.env_maker(num_agents=args.agents) # make a local (unshared) environment
-    env.seed(args.seed + rank) ; torch.manual_seed(args.seed + rank) # seed everything
+    # make a local (unshared) environment
+    env = args.env_maker(num_agents=args.agents)
+    env.seed(args.seed + rank)
+    torch.manual_seed(args.seed + rank)  # seed everything
     models = {
-        f'agent-{i}': A3CPolicy(channels=3, 
-                               memsize=args.hidden, 
-                               num_actions=args.num_actions)
+        f'agent-{i}': A3CPolicy(channels=3,
+                                memsize=args.hidden,
+                                num_actions=args.num_actions)
         for i in range(args.agents)
-    } # local/unshared models
+    }  # local/unshared models
     obs = env.reset()
     states = {
         agent_name: preprocess_obs(ob)
         for agent_name, ob in obs.items()
-    } # get first state
+    }  # get first state
     hxs = {
         f'agent-{i}': None
         for i in range(args.agents)
     }
 
     start_time = last_disp_time = time.time()
-    episode_length, epr, eploss = 0, 0, 0 # bookkeeping
+    episode_length, epr, eploss = 0, 0, 0  # bookkeeping
     dones = {
         f'agent-{i}': True
         for i in range(args.agents)
     }
 
-    while info['frames'][0] <= 8e7 or args.test: # openai baselines uses 40M frames...we'll use 80M
+    # openai baselines uses 40M frames...we'll use 80M
+    while info['frames'][0] <= 8e7 or args.test:
         for agent_name, model in models.items():
-            model.load_state_dict(shared_models[agent_name].state_dict()) # sync with shared model
+            # sync with shared model
+            model.load_state_dict(shared_models[agent_name].state_dict())
 
         hxs = {
-            agent_name: torch.zeros(1, 256) if dones[agent_name] else hx.detach()  # rnn activation vector
+            # rnn activation vector
+            agent_name: torch.zeros(
+                1, 256) if dones[agent_name] else hx.detach()
             for agent_name, hx in hxs.items()
         }
 
@@ -166,16 +183,18 @@ def train(shared_models, shared_optimizers, shared_schedulers, rank, args, info)
             for agent_name, model in models.items():
                 value, logit, hx = model((states[agent_name], hxs[agent_name]))
                 logp = F.log_softmax(logit, dim=-1)
-                action = torch.exp(logp).multinomial(num_samples=1).data[0] #logp.max(1)[1].data if args.test else
+                # logp.max(1)[1].data if args.test else
+                action = torch.exp(logp).multinomial(num_samples=1).data[0]
                 actions[agent_name] = action.numpy()[0]
 
                 values_hist[agent_name].append(value)
                 logps_hist[agent_name].append(logp)
                 actions_hist[agent_name].append(action)
-            
+
             obs, rewards, dones, _ = env.step(actions)
-            
-            if args.render: env.render(time=1000)
+
+            if args.render:
+                env.render(time=1000)
 
             states = {
                 agent_name: preprocess_obs(ob)
@@ -186,35 +205,37 @@ def train(shared_models, shared_optimizers, shared_schedulers, rank, args, info)
             epr += np.sum([reward for reward in rewards.values()])
 
             for agent_name, reward in rewards.items():
-                rewards[agent_name] = np.clip(reward, -1, 1) # clip reward
+                rewards[agent_name] = np.clip(reward, -1, 1)  # clip reward
                 rewards_hist[agent_name].append(rewards[agent_name])
-            
+
             # should set done to true once a certain number of timesteps is reached since
             # one episode shouldn't be played for too long
-            
-            info['frames'].add_(1) ; num_frames = int(info['frames'].item())
 
-            if num_frames % 2e5 == 0: # save every 0.2M frames
+            info['frames'].add_(1)
+            num_frames = int(info['frames'].item())
+
+            if num_frames % 2e5 == 0:  # save every 0.2M frames
                 logger.info(f"{num_frames/1e6:.2f}M frames: saving models as \
                                model.<agent_name>.{num_frames/1e5:.0f}.tar")
                 for agent_name, shared_model in shared_models.items():
                     torch.save(shared_model.state_dict(),
                                os.path.join(args.save_dir, f'model.{agent_name}.{num_frames/1e5:.0f}.tar'))
 
-            if dones["__all__"]: # update shared data
+            if dones["__all__"]:  # update shared data
                 info['episodes'] += 1
                 interp = 1 if info['episodes'][0] == 1 else args.horizon
                 info['run_epr'].mul_(1-interp).add_(interp * epr)
                 info['run_loss'].mul_(1-interp).add_(interp * eploss)
 
-            if rank == 0 and time.time() - last_disp_time > 60: # print info ~ every minute
-                elapsed = time.strftime("%Hh %Mm %Ss", time.gmtime(time.time() - start_time))
+            if rank == 0 and time.time() - last_disp_time > 60:  # print info ~ every minute
+                elapsed = time.strftime(
+                    "%Hh %Mm %Ss", time.gmtime(time.time() - start_time))
                 logger.info(f"time {elapsed}, episodes {info['episodes'].item():.0f}, " +
                             f"frames {num_frames/1e6:.2f}M, mean epr {info['run_epr'].item():.2f}, " +
                             f"run loss {info['run_loss'].item():.2f}")
                 last_disp_time = time.time()
 
-            if dones["__all__"]: # maybe print info.
+            if dones["__all__"]:  # maybe print info.
                 episode_length, epr, eploss = 0, 0, 0
                 obs = env.reset()
                 states = {
@@ -224,16 +245,16 @@ def train(shared_models, shared_optimizers, shared_schedulers, rank, args, info)
 
         for agent_name, model in models.items():
             if dones[agent_name]:
-                next_value = torch.zeros(1,1)
+                next_value = torch.zeros(1, 1)
             else:
                 next_value = model((states[agent_name], hxs[agent_name]))[0]
-            
+
             values_hist[agent_name].append(next_value.detach())
 
-            loss = cost_func(args, 
-                             torch.cat(values_hist[agent_name]), 
-                             torch.cat(logps_hist[agent_name]), 
-                             torch.cat(actions_hist[agent_name]), 
+            loss = cost_func(args,
+                             torch.cat(values_hist[agent_name]),
+                             torch.cat(logps_hist[agent_name]),
+                             torch.cat(actions_hist[agent_name]),
                              np.asarray(rewards_hist[agent_name]))
             eploss += loss.item()
             shared_optimizers[agent_name].zero_grad()
@@ -241,11 +262,11 @@ def train(shared_models, shared_optimizers, shared_schedulers, rank, args, info)
             torch.nn.utils.clip_grad_norm_(models[agent_name].parameters(), 40)
 
             for param, shared_param in zip(models[agent_name].parameters(), shared_models[agent_name].parameters()):
-                if shared_param.grad is None: shared_param._grad = param.grad # sync gradients with shared model
+                if shared_param.grad is None:
+                    shared_param._grad = param.grad  # sync gradients with shared model
             shared_optimizers[agent_name].step()
             if dones["__all__"]:
                 shared_schedulers[agent_name].step()
-
 
 
 # Utils
@@ -261,4 +282,6 @@ def preprocess_obs(obs):
     obs = obs.unsqueeze(0)
     return obs
 
-discount = lambda x, gamma: lfilter([1],[1,-gamma],x[::-1])[::-1] # discounted rewards one liner
+
+def discount(x, gamma): return lfilter(
+    [1], [1, -gamma], x[::-1])[::-1]  # discounted rewards one liner
