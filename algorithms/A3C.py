@@ -21,23 +21,35 @@ os.environ['OMP_NUM_THREADS'] = '1'
 
 
 class A3CPolicy(nn.Module): # an actor-critic neural network
-    def __init__(self, channels, memsize, num_actions):
+    def __init__(self, channels, memsize, num_actions, communication=False, message_size=0, n_agents=5):
         super(A3CPolicy, self).__init__()
+        self.communication = communication
         self.conv1 = nn.Conv2d(channels, 32, 3, stride=2, padding=1)
         self.conv2 = nn.Conv2d(32, 32, 3, stride=2, padding=1)
         self.conv3 = nn.Conv2d(32, 32, 3, stride=2, padding=1)
         self.conv4 = nn.Conv2d(32, 32, 3, stride=2, padding=1)
-        self.gru = nn.GRUCell(32 * 5 * 5, memsize)
-        self.critic_linear, self.actor_linear = nn.Linear(memsize, 1), nn.Linear(memsize, num_actions)
+        self.gru = nn.GRUCell(32 * 5 * 5 + message_size * n_agents, memsize)
+        self.critic_head = nn.Linear(memsize, 1)
+        self.actor_head = nn.Linear(memsize, num_actions)
+        if self.communication:
+            self.comm_critic_head = nn.Linear(memsize, 1)
+            self.comm_actor_head = nn.Linear(memsize, message_size)
 
     def forward(self, inputs, train=True, hard=False):
-        inputs, hx = inputs
-        x = F.elu(self.conv1(inputs))
+        if self.communication:
+            visual_inputs, hx, messages = inputs
+        else:
+            visual_inputs, hx = inputs
+        x = F.elu(self.conv1(visual_inputs))
         x = F.elu(self.conv2(x))
         x = F.elu(self.conv3(x))
         x = F.elu(self.conv4(x))
+        if self.communication:
+            x = torch.cat(x.view(-1, 32 * 5 * 5), messages)
+        else:
+            x = x.view(-1, 32 * 5 * 5)
         hx = self.gru(x.view(-1, 32 * 5 * 5), (hx))
-        return self.critic_linear(hx), self.actor_linear(hx), hx
+        return self.critic_head(hx), self.actor_head(hx), hx
 
     def try_load(self, save_dir, agent_name, logger=None):
         paths = glob.glob(os.path.join(save_dir, f'*.{agent_name}.*.tar'))
