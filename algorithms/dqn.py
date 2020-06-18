@@ -1,4 +1,6 @@
-""" DQN Agent implementation, inspired from https://pytorch.org/tutorials/intermediate/reinforcement_q_learning.html """
+"""
+DQN Agent implementation, inspired from https://pytorch.org/tutorials/intermediate/reinforcement_q_learning.html
+"""
 
 import gym
 import math

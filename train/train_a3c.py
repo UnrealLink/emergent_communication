@@ -1,15 +1,13 @@
-import numpy as np
+"""
+Module to launch A3C algorithm.
+Most of the code is taken from https://github.com/greydanus/baby-a3c.
+"""
+
 import os
-import sys
-import shutil
 import argparse
 import logging
-from tqdm import tqdm
-import matplotlib.pyplot as plt
 
 import torch
-import torch.nn as nn
-import torch.nn.functional as F
 import torch.multiprocessing as mp
 
 import utils.utility_funcs as utility_funcs
@@ -18,7 +16,7 @@ from social_dilemmas.envs.cleanup import CleanupEnv
 from social_dilemmas.envs.harvest import HarvestEnv
 from social_dilemmas.envs.finder import FinderEnv
 
-from algorithms.A3C import A3CPolicy, SharedAdam, train
+from algorithms.a3c import A3CPolicy, SharedAdam, train
 
 
 os.environ['OMP_NUM_THREADS'] = '1'
@@ -31,6 +29,9 @@ env_map = {
 
 
 def get_args():
+    """
+    Get arguments
+    """
     parser = argparse.ArgumentParser(description=None)
     parser.add_argument('--env', default='finder', type=str, help='environment name')
     parser.add_argument('--agents', default=5, type=int, help='number of agents in environment')
@@ -49,12 +50,15 @@ def get_args():
 
 if __name__ == "__main__":
     mp.set_start_method('spawn') # this must not be in global scope
-    
+
     args = get_args()
     dir_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
-    args.save_dir = os.path.join(dir_path, f'saves/{args.env}') # keep the directory structure simple
-    if args.render:  args.processes = 1 ; args.test = True # render mode -> test mode w one process
-    if args.test:  args.lr = 0 # don't train in render mode
+    args.save_dir = os.path.join(dir_path, f'saves/{args.env}')
+    if args.render:
+        args.processes = 1
+        args.test = True # render mode -> test mode w one process
+    if args.test:
+        args.lr = 0 # don't train in render mode
 
     args.env_maker = env_map[args.env]
     single_env = args.env_maker(num_agents=1)
@@ -68,9 +72,9 @@ if __name__ == "__main__":
     logger.info("Creating shared models and optimizers.")
     torch.manual_seed(args.seed)
     shared_models = {
-        f'agent-{i}': A3CPolicy(channels=3, 
-                               memsize=args.hidden, 
-                               num_actions=args.num_actions).share_memory()
+        f'agent-{i}': A3CPolicy(channels=3,
+                                memsize=args.hidden,
+                                num_actions=args.num_actions).share_memory()
         for i in range(args.agents)
     }
     shared_optimizers = {
@@ -95,10 +99,12 @@ if __name__ == "__main__":
     if min(frames) != max(frames):
         logger.warning("Loaded models do not have the same number of training frames between agents")
     info['frames'] += max(frames)
-    
+
     logger.info("Launching processes...")
     processes = []
     for rank in range(args.processes):
         p = mp.Process(target=train, args=(shared_models, shared_optimizers, shared_schedulers, rank, args, info))
-        p.start() ; processes.append(p)
-    for p in processes: p.join()
+        p.start()
+        processes.append(p)
+    for p in processes:
+        p.join()

@@ -1,9 +1,11 @@
+"""
+Functions and classes for A3C algorithm.
+Most of the code is taken from https://github.com/greydanus/baby-a3c.
+"""
+
 import os
-import sys
-import gym
 import time
 import glob
-import argparse
 import logging
 
 import numpy as np
@@ -13,15 +15,18 @@ import cv2
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-import torch.multiprocessing as mp
 
 import utils.utility_funcs as utility_funcs
 
 os.environ['OMP_NUM_THREADS'] = '1'
 
 
-class A3CPolicy(nn.Module):  # an actor-critic neural network
-    def __init__(self, channels, memsize, num_actions, communication=False, message_size=0, n_agents=5):
+class A3CPolicy(nn.Module):
+    """
+    Actor-critic model for A3C algorithm.
+    """
+    def __init__(self, channels, memsize, num_actions,
+                 communication=False, message_size=0, n_agents=5):
         super(A3CPolicy, self).__init__()
         self.communication = communication
         self.conv1 = nn.Conv2d(channels, 32, 3, stride=2, padding=1)
@@ -35,65 +40,72 @@ class A3CPolicy(nn.Module):  # an actor-critic neural network
             self.comm_critic_head = nn.Linear(memsize, 1)
             self.comm_actor_head = nn.Linear(memsize, message_size)
 
-    def forward(self, inputs, train=True, hard=False):
+    # pylint: disable=arguments-differ
+    def forward(self, inputs):
         if self.communication:
-            visual_inputs, hx, messages = inputs
+            visual, state, messages = inputs
         else:
-            visual_inputs, hx = inputs
-        x = F.elu(self.conv1(visual_inputs))
-        x = F.elu(self.conv2(x))
-        x = F.elu(self.conv3(x))
-        x = F.elu(self.conv4(x))
+            visual, state = inputs
+        visual = F.elu(self.conv1(visual))
+        visual = F.elu(self.conv2(visual))
+        visual = F.elu(self.conv3(visual))
+        visual = F.elu(self.conv4(visual))
         if self.communication:
-            x = torch.cat(x.view(-1, 32 * 5 * 5), messages)
+            full_input = torch.cat(visual.view(-1, 32 * 5 * 5), messages)
         else:
-            x = x.view(-1, 32 * 5 * 5)
-        hx = self.gru(x.view(-1, 32 * 5 * 5), (hx))
-        return self.critic_head(hx), self.actor_head(hx), hx
+            full_input = visual.view(-1, 32 * 5 * 5)
+        state = self.gru(full_input.view(-1, 32 * 5 * 5), (state))
+        return self.critic_head(state), self.actor_head(state), state
 
     def try_load(self, save_dir, agent_name, logger=None):
+        """
+        Try to load saved models from save_dir
+        """
         paths = glob.glob(os.path.join(save_dir, f'*.{agent_name}.*.tar'))
         step = 0
         if len(paths) > 0:
             ckpts = [int(s.split('.')[-2]) for s in paths]
-            ix = np.argmax(ckpts)
-            step = ckpts[ix]
-            self.load_state_dict(torch.load(paths[ix]))
-        if logger is None:
-            print("\tno saved models") if step == 0 else print(
-                "\tloaded model: {}".format(paths[ix]))
-        else:
-            logger.info("\tno saved models") if step == 0 else print(
-                "\tloaded model: {}".format(paths[ix]))
+            index = np.argmax(ckpts)
+            step = ckpts[index]
+            self.load_state_dict(torch.load(paths[index]))
+        if logger is not None:
+            if step == 0:
+                logger.info("\tno saved models")
+            else:
+                logger.info("\tloaded model: {}".format(paths[index]))
         return step
 
 
-# extend a pytorch optimizer so it shares grads across processes
 class SharedAdam(torch.optim.Adam):
+    """
+    Extends a pytorch optimizer so it shares grads across processes
+    """
     def __init__(self, params, lr=1e-3, betas=(0.9, 0.999), eps=1e-8, weight_decay=0):
         super(SharedAdam, self).__init__(params, lr, betas, eps, weight_decay)
         for group in self.param_groups:
-            for p in group['params']:
-                state = self.state[p]
-                state['shared_steps'], state['step'] = torch.zeros(
-                    1).share_memory_(), 0
-                state['exp_avg'] = p.data.new().resize_as_(
-                    p.data).zero_().share_memory_()
-                state['exp_avg_sq'] = p.data.new().resize_as_(
-                    p.data).zero_().share_memory_()
+            for param in group['params']:
+                state = self.state[param]
+                # pylint: disable=line-too-long
+                state['shared_steps'], state['step'] = torch.zeros(1).share_memory_(), 0
+                state['exp_avg'] = param.data.new().resize_as_(param.data).zero_().share_memory_()
+                state['exp_avg_sq'] = param.data.new().resize_as_(param.data).zero_().share_memory_()
 
+        # pylint: disable=unused-variable
         def step(self, closure=None):
             for group in self.param_groups:
-                for p in group['params']:
-                    if p.grad is None:
+                for param in group['params']:
+                    if param.grad is None:
                         continue
-                    self.state[p]['shared_steps'] += 1
+                    self.state[param]['shared_steps'] += 1
                     # a "step += 1"  comes later
-                    self.state[p]['step'] = self.state[p]['shared_steps'][0] - 1
+                    self.state[param]['step'] = self.state[param]['shared_steps'][0] - 1
             super.step(closure)
 
 
 def cost_func(args, values, logps, actions, rewards):
+    """
+    Compute loss for A3C training
+    """
     np_values = values.view(-1).data.numpy()
 
     # generalized advantage estimation using \delta_t residuals (a policy gradient method)
@@ -106,6 +118,7 @@ def cost_func(args, values, logps, actions, rewards):
     # l2 loss over value estimator
     rewards[-1] += args.gamma * np_values[-1]
     discounted_r = discount(np.asarray(rewards), args.gamma)
+    # pylint: disable=not-callable
     discounted_r = torch.tensor(discounted_r.copy(), dtype=torch.float32)
     value_loss = .5 * (discounted_r - values[:-1, 0]).pow(2).sum()
 
@@ -115,6 +128,9 @@ def cost_func(args, values, logps, actions, rewards):
 
 
 def train(shared_models, shared_optimizers, shared_schedulers, rank, args, info):
+    """
+    A3C worker training function
+    """
     logger = logging.getLogger('A3C' + args.env)
     utility_funcs.setup_logger(logger, args)
 
@@ -177,7 +193,7 @@ def train(shared_models, shared_optimizers, shared_schedulers, rank, args, info)
             for i in range(args.agents)
         }
 
-        for step in range(args.rnn_steps):
+        for _ in range(args.rnn_steps):
             episode_length += 1
             actions = {}
             for agent_name, model in models.items():
@@ -218,8 +234,9 @@ def train(shared_models, shared_optimizers, shared_schedulers, rank, args, info)
                 logger.info(f"{num_frames/1e6:.2f}M frames: saving models as \
                                model.<agent_name>.{num_frames/1e5:.0f}.tar")
                 for agent_name, shared_model in shared_models.items():
-                    torch.save(shared_model.state_dict(),
-                               os.path.join(args.save_dir, f'model.{agent_name}.{num_frames/1e5:.0f}.tar'))
+                    model_path = os.path.join(args.save_dir,
+                                              f'model.{agent_name}.{num_frames/1e5:.0f}.tar')
+                    torch.save(shared_model.state_dict(), model_path)
 
             if dones["__all__"]:  # update shared data
                 info['episodes'] += 1
@@ -230,8 +247,10 @@ def train(shared_models, shared_optimizers, shared_schedulers, rank, args, info)
             if rank == 0 and time.time() - last_disp_time > 60:  # print info ~ every minute
                 elapsed = time.strftime(
                     "%Hh %Mm %Ss", time.gmtime(time.time() - start_time))
-                logger.info(f"time {elapsed}, episodes {info['episodes'].item():.0f}, " +
-                            f"frames {num_frames/1e6:.2f}M, mean epr {info['run_epr'].item():.2f}, " +
+                logger.info(f"time {elapsed}, " +
+                            f"episodes {info['episodes'].item():.0f}, " +
+                            f"frames {num_frames/1e6:.2f}M, " +
+                            f"mean epr {info['run_epr'].item():.2f}, " +
                             f"run loss {info['run_loss'].item():.2f}")
                 last_disp_time = time.time()
 
@@ -283,5 +302,8 @@ def preprocess_obs(obs):
     return obs
 
 
-def discount(x, gamma): return lfilter(
-    [1], [1, -gamma], x[::-1])[::-1]  # discounted rewards one liner
+def discount(x, gamma):
+    """
+    discount rewards with a gamma rate.
+    """
+    return lfilter([1], [1, -gamma], x[::-1])[::-1]

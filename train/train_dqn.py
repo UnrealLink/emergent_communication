@@ -1,4 +1,6 @@
-"""Launch training with chosen policy for each agent"""
+"""
+Launch training with DQN.
+"""
 
 import numpy as np
 import os
@@ -15,7 +17,7 @@ from social_dilemmas.envs.cleanup import CleanupEnv
 from social_dilemmas.envs.harvest import HarvestEnv
 from social_dilemmas.envs.finder import FinderEnv
 
-from algorithms.DQN import DQNAgent
+from algorithms.dqn import DQNAgent
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--env", type=str, 
