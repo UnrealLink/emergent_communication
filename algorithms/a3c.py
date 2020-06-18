@@ -26,36 +26,44 @@ class A3CPolicy(nn.Module):
     Actor-critic model for A3C algorithm.
     """
     def __init__(self, channels, memsize, num_actions,
-                 communication=False, message_size=0, n_agents=5):
+                 communication=False, vocab_size=0, n_agents=5):
         super(A3CPolicy, self).__init__()
         self.communication = communication
         self.conv1 = nn.Conv2d(channels, 32, 3, stride=2, padding=1)
         self.conv2 = nn.Conv2d(32, 32, 3, stride=2, padding=1)
         self.conv3 = nn.Conv2d(32, 32, 3, stride=2, padding=1)
         self.conv4 = nn.Conv2d(32, 32, 3, stride=2, padding=1)
-        self.gru = nn.GRUCell(32 * 5 * 5 + message_size * n_agents, memsize)
+        self.gru = nn.GRUCell(32 * 5 * 5 + vocab_size * n_agents, memsize)
         self.critic_head = nn.Linear(memsize, 1)
         self.actor_head = nn.Linear(memsize, num_actions)
         if self.communication:
             self.comm_critic_head = nn.Linear(memsize, 1)
-            self.comm_actor_head = nn.Linear(memsize, message_size)
+            self.comm_actor_head = nn.Linear(memsize, vocab_size)
 
     # pylint: disable=arguments-differ
     def forward(self, inputs):
         if self.communication:
-            visual, state, messages = inputs
+            visual, messages, hx = inputs
         else:
-            visual, state = inputs
+            visual, hx = inputs
         visual = F.elu(self.conv1(visual))
         visual = F.elu(self.conv2(visual))
         visual = F.elu(self.conv3(visual))
         visual = F.elu(self.conv4(visual))
         if self.communication:
-            full_input = torch.cat(visual.view(-1, 32 * 5 * 5), messages)
+            full_input = torch.cat((visual.view(-1, 32 * 5 * 5), messages), 1)
+            hx = self.gru(full_input, (hx))
+            value = self.critic_head(hx)
+            logp = F.log_softmax(self.actor_head(hx), dim=-1)
+            comm_value = self.critic_head(hx)
+            comm_logp = F.log_softmax(self.comm_actor_head(hx), dim=-1)
+            return (value, logp, comm_value, comm_logp, hx)
         else:
             full_input = visual.view(-1, 32 * 5 * 5)
-        state = self.gru(full_input.view(-1, 32 * 5 * 5), (state))
-        return self.critic_head(state), self.actor_head(state), state
+            hx = self.gru(full_input, (hx))
+            value = self.critic_head(hx)
+            logp = F.log_softmax(self.actor_head(hx), dim=-1)
+            return value, logp, hx
 
     def try_load(self, save_dir, agent_name, logger=None):
         """
@@ -142,7 +150,10 @@ def train(shared_models, shared_optimizers, shared_schedulers, rank, args, info)
     models = {
         f'agent-{i}': A3CPolicy(channels=3,
                                 memsize=args.hidden,
-                                num_actions=args.num_actions)
+                                num_actions=args.num_actions,
+                                communication=args.communication,
+                                vocab_size=args.vocab,
+                                n_agents=args.agents)
         for i in range(args.agents)
     }  # local/unshared models
     obs = env.reset()
@@ -152,6 +163,10 @@ def train(shared_models, shared_optimizers, shared_schedulers, rank, args, info)
     }  # get first state
     hxs = {
         f'agent-{i}': None
+        for i in range(args.agents)
+    }
+    messages = {
+        f'agent-{i}': 0
         for i in range(args.agents)
     }
 
@@ -188,6 +203,21 @@ def train(shared_models, shared_optimizers, shared_schedulers, rank, args, info)
             f'agent-{i}': []
             for i in range(args.agents)
         }
+
+        if args.communication:
+            comm_values_hist = {
+                f'agent-{i}': []
+                for i in range(args.agents)
+            }
+            comm_logps_hist = {
+                f'agent-{i}': []
+                for i in range(args.agents)
+            }
+            comm_messages_hist = {
+                f'agent-{i}': []
+                for i in range(args.agents)
+            }
+
         rewards_hist = {
             f'agent-{i}': []
             for i in range(args.agents)
@@ -196,9 +226,17 @@ def train(shared_models, shared_optimizers, shared_schedulers, rank, args, info)
         for _ in range(args.rnn_steps):
             episode_length += 1
             actions = {}
+            flat_messages = preprocess_messages(messages)
             for agent_name, model in models.items():
-                value, logit, hx = model((states[agent_name], hxs[agent_name]))
-                logp = F.log_softmax(logit, dim=-1)
+                if args.communication:
+                    value, logp, comm_value, comm_logp, hx = model((states[agent_name],
+                                                                    flat_messages,
+                                                                    hxs[agent_name]))
+                else:
+                    value, logp, hx = model((states[agent_name], hxs[agent_name]))
+                hxs[agent_name] = hx # update lstm state
+                
+                # select action
                 # logp.max(1)[1].data if args.test else
                 action = torch.exp(logp).multinomial(num_samples=1).data[0]
                 actions[agent_name] = action.numpy()[0]
@@ -206,6 +244,14 @@ def train(shared_models, shared_optimizers, shared_schedulers, rank, args, info)
                 values_hist[agent_name].append(value)
                 logps_hist[agent_name].append(logp)
                 actions_hist[agent_name].append(action)
+
+                if args.communication:
+                    message = torch.exp(logp).multinomial(num_samples=1).data[0]
+                    messages[agent_name] = message.numpy()[0]
+
+                    comm_values_hist[agent_name].append(comm_value)
+                    comm_logps_hist[agent_name].append(comm_logp)
+                    comm_messages_hist[agent_name].append(message)
 
             obs, rewards, dones, _ = env.step(actions)
 
@@ -230,7 +276,7 @@ def train(shared_models, shared_optimizers, shared_schedulers, rank, args, info)
             info['frames'].add_(1)
             num_frames = int(info['frames'].item())
 
-            if num_frames % 2e5 == 0:  # save every 0.2M frames
+            if num_frames % 1e5 == 0:  # save every 0.1M frames
                 logger.info(f"{num_frames/1e6:.2f}M frames: saving models as \
                                model.<agent_name>.{num_frames/1e5:.0f}.tar")
                 for agent_name, shared_model in shared_models.items():
@@ -266,7 +312,13 @@ def train(shared_models, shared_optimizers, shared_schedulers, rank, args, info)
             if dones[agent_name]:
                 next_value = torch.zeros(1, 1)
             else:
-                next_value = model((states[agent_name], hxs[agent_name]))[0]
+                if args.communication:
+                    flat_messages = preprocess_messages(messages)
+                    next_value, _, next_comm_value, _, _ = model((states[agent_name],
+                                                                  flat_messages,
+                                                                  hxs[agent_name]))
+                else:
+                    next_value = model((states[agent_name], hxs[agent_name]))[0]
 
             values_hist[agent_name].append(next_value.detach())
 
@@ -276,7 +328,18 @@ def train(shared_models, shared_optimizers, shared_schedulers, rank, args, info)
                              torch.cat(actions_hist[agent_name]),
                              np.asarray(rewards_hist[agent_name]))
             eploss += loss.item()
+
+            if args.communication:
+                comm_values_hist[agent_name].append(next_comm_value)
+                comm_loss = cost_func(args,
+                                      torch.cat(comm_values_hist[agent_name]),
+                                      torch.cat(comm_logps_hist[agent_name]),
+                                      torch.cat(comm_messages_hist[agent_name]),
+                                      np.asarray(rewards_hist[agent_name]))
+
             shared_optimizers[agent_name].zero_grad()
+            if args.communication:
+                comm_loss.backward(retain_graph=True)
             loss.backward()
             torch.nn.utils.clip_grad_norm_(models[agent_name].parameters(), 40)
 
@@ -301,6 +364,11 @@ def preprocess_obs(obs):
     obs = obs.unsqueeze(0)
     return obs
 
+def preprocess_messages(messages):
+    """
+    Transform a dict of int messages into a flattened one hot tensor
+    """
+    return torch.zeros(1, 5*10)
 
 def discount(x, gamma):
     """

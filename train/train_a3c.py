@@ -45,6 +45,9 @@ def get_args():
     parser.add_argument('--tau', default=1.0, type=float, help='generalized advantage estimation discount')
     parser.add_argument('--horizon', default=0.99, type=float, help='horizon for running averages')
     parser.add_argument('--hidden', default=256, type=int, help='hidden size of GRU')
+    parser.add_argument('--communication', default=False, action='store_true', help='add communication')
+    parser.add_argument('--vocab', default=10, type=int, help='vocabulary size for communication')
+    parser.add_argument('--save', default=None, type=str, help='save directory name')
     return parser.parse_args()
 
 
@@ -52,13 +55,19 @@ if __name__ == "__main__":
     mp.set_start_method('spawn') # this must not be in global scope
 
     args = get_args()
-    dir_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
-    args.save_dir = os.path.join(dir_path, f'saves/{args.env}')
     if args.render:
         args.processes = 1
         args.test = True # render mode -> test mode w one process
     if args.test:
         args.lr = 0 # don't train in render mode
+    if not args.communication:
+        args.vocab = 0
+
+    dir_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+    if args.save is None:
+        args.save_dir = os.path.join(dir_path, f'saves/{args.env}')
+    else:
+        args.save_dir = os.path.join(dir_path, f'saves/{args.save}')
 
     args.env_maker = env_map[args.env]
     single_env = args.env_maker(num_agents=1)
@@ -74,7 +83,10 @@ if __name__ == "__main__":
     shared_models = {
         f'agent-{i}': A3CPolicy(channels=3,
                                 memsize=args.hidden,
-                                num_actions=args.num_actions).share_memory()
+                                num_actions=args.num_actions,
+                                communication=args.communication,
+                                vocab_size=args.vocab,
+                                n_agents=args.agents).share_memory()
         for i in range(args.agents)
     }
     shared_optimizers = {
@@ -95,7 +107,7 @@ if __name__ == "__main__":
     logger.info("Loading previous shared models parameters.")
     frames = []
     for agent_name, shared_model in shared_models.items():
-        frames.append(shared_model.try_load(args.save_dir, agent_name) * 1e5)
+        frames.append(shared_model.try_load(args.save_dir, agent_name, logger) * 1e5)
     if min(frames) != max(frames):
         logger.warning("Loaded models do not have the same number of training frames between agents")
     info['frames'] += max(frames)
