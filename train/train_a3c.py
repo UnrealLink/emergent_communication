@@ -38,7 +38,7 @@ def get_args():
     parser.add_argument('--processes', default=8, type=int, help='number of processes to train with')
     parser.add_argument('--render', default=False, action='store_true', help='renders the atari environment')
     parser.add_argument('--test', default=False, action='store_true', help='sets lr=0, chooses most likely actions')
-    parser.add_argument('--rnn_steps', default=20, type=int, help='steps to train LSTM over')
+    parser.add_argument('--rnn-steps', default=20, type=int, help='steps to train LSTM over')
     parser.add_argument('--lr', default=1e-4, type=float, help='learning rate')
     parser.add_argument('--seed', default=1, type=int, help='seed random # generators (for reproducibility)')
     parser.add_argument('--gamma', default=0.99, type=float, help='rewards discount factor')
@@ -48,6 +48,7 @@ def get_args():
     parser.add_argument('--communication', default=False, action='store_true', help='add communication')
     parser.add_argument('--vocab', default=10, type=int, help='vocabulary size for communication')
     parser.add_argument('--save', default=None, type=str, help='save directory name')
+    parser.add_argument('--cpu-only', default=False, action='store_true', help='prevent gpu usage')
     return parser.parse_args()
 
 
@@ -62,6 +63,10 @@ if __name__ == "__main__":
         args.lr = 0 # don't train in render mode
     if not args.communication:
         args.vocab = 0
+    if args.cpu_only:
+        device = torch.device("cpu")
+    else:
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     dir_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
     if args.save is None:
@@ -86,7 +91,7 @@ if __name__ == "__main__":
                                 num_actions=args.num_actions,
                                 communication=args.communication,
                                 vocab_size=args.vocab,
-                                n_agents=args.agents).share_memory()
+                                n_agents=args.agents).share_memory().to(device)
         for i in range(args.agents)
     }
     shared_optimizers = {

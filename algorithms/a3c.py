@@ -20,7 +20,6 @@ import utils.utility_funcs as utility_funcs
 
 os.environ['OMP_NUM_THREADS'] = '1'
 
-
 class A3CPolicy(nn.Module):
     """
     Actor-critic model for A3C algorithm.
@@ -110,24 +109,24 @@ class SharedAdam(torch.optim.Adam):
             super.step(closure)
 
 
-def cost_func(args, values, logps, actions, rewards):
+def cost_func(args, values, logps, actions, rewards, device):
     """
     Compute loss for A3C training
     """
-    np_values = values.view(-1).data.numpy()
+    np_values = values.view(-1).data.cpu().numpy()
 
     # generalized advantage estimation using \delta_t residuals (a policy gradient method)
     delta_t = np.asarray(rewards) + args.gamma * np_values[1:] - np_values[:-1]
     logpys = logps.gather(1, actions.clone().detach().view(-1, 1))
     gen_adv_est = discount(delta_t, args.gamma * args.tau)
     policy_loss = -(logpys.view(-1) *
-                    torch.FloatTensor(gen_adv_est.copy())).sum()
+                    torch.FloatTensor(gen_adv_est.copy()).to(device)).sum()
 
     # l2 loss over value estimator
     rewards[-1] += args.gamma * np_values[-1]
     discounted_r = discount(np.asarray(rewards), args.gamma)
     # pylint: disable=not-callable
-    discounted_r = torch.tensor(discounted_r.copy(), dtype=torch.float32)
+    discounted_r = torch.tensor(discounted_r.copy(), dtype=torch.float32).to(device)
     value_loss = .5 * (discounted_r - values[:-1, 0]).pow(2).sum()
 
     # entropy definition, for entropy regularization
@@ -141,8 +140,14 @@ def train(shared_models, shared_optimizers, shared_schedulers, rank, args, info)
     """
     logger = logging.getLogger('A3C' + args.env)
     utility_funcs.setup_logger(logger, args)
+    if args.cpu_only:
+        device = torch.device("cpu")
+    else:
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
 
     logger.info(f"Process {rank} started")
+
     # make a local (unshared) environment
     env = args.env_maker(num_agents=args.agents)
     env.seed(args.seed + rank)
@@ -153,12 +158,12 @@ def train(shared_models, shared_optimizers, shared_schedulers, rank, args, info)
                                 num_actions=args.num_actions,
                                 communication=args.communication,
                                 vocab_size=args.vocab,
-                                n_agents=args.agents)
+                                n_agents=args.agents).to(device)
         for i in range(args.agents)
     }  # local/unshared models
     obs = env.reset()
     states = {
-        agent_name: preprocess_obs(ob)
+        agent_name: preprocess_obs(ob, device=device)
         for agent_name, ob in obs.items()
     }  # get first state
     hxs = {
@@ -186,7 +191,7 @@ def train(shared_models, shared_optimizers, shared_schedulers, rank, args, info)
         hxs = {
             # rnn activation vector
             agent_name: torch.zeros(
-                1, 256) if dones[agent_name] else hx.detach()
+                1, 256).to(device) if dones[agent_name] else hx.detach()
             for agent_name, hx in hxs.items()
         }
 
@@ -226,7 +231,8 @@ def train(shared_models, shared_optimizers, shared_schedulers, rank, args, info)
         for _ in range(args.rnn_steps):
             episode_length += 1
             actions = {}
-            flat_messages = preprocess_messages(messages)
+            if args.communication:
+                flat_messages = preprocess_messages(messages, args.vocab, device=device)
             for agent_name, model in models.items():
                 if args.communication:
                     value, logp, comm_value, comm_logp, hx = model((states[agent_name],
@@ -235,11 +241,11 @@ def train(shared_models, shared_optimizers, shared_schedulers, rank, args, info)
                 else:
                     value, logp, hx = model((states[agent_name], hxs[agent_name]))
                 hxs[agent_name] = hx # update lstm state
-                
+
                 # select action
                 # logp.max(1)[1].data if args.test else
                 action = torch.exp(logp).multinomial(num_samples=1).data[0]
-                actions[agent_name] = action.numpy()[0]
+                actions[agent_name] = action.cpu().numpy()[0]
 
                 values_hist[agent_name].append(value)
                 logps_hist[agent_name].append(logp)
@@ -247,7 +253,7 @@ def train(shared_models, shared_optimizers, shared_schedulers, rank, args, info)
 
                 if args.communication:
                     message = torch.exp(logp).multinomial(num_samples=1).data[0]
-                    messages[agent_name] = message.numpy()[0]
+                    messages[agent_name] = message.cpu().numpy()[0]
 
                     comm_values_hist[agent_name].append(comm_value)
                     comm_logps_hist[agent_name].append(comm_logp)
@@ -259,7 +265,7 @@ def train(shared_models, shared_optimizers, shared_schedulers, rank, args, info)
                 env.render(time=1000)
 
             states = {
-                agent_name: preprocess_obs(ob)
+                agent_name: preprocess_obs(ob, device=device)
                 for agent_name, ob in obs.items()
             }
 
@@ -269,7 +275,6 @@ def train(shared_models, shared_optimizers, shared_schedulers, rank, args, info)
             for agent_name, reward in rewards.items():
                 rewards[agent_name] = np.clip(reward, -1, 1)  # clip reward
                 rewards_hist[agent_name].append(rewards[agent_name])
-
             # should set done to true once a certain number of timesteps is reached since
             # one episode shouldn't be played for too long
 
@@ -296,6 +301,7 @@ def train(shared_models, shared_optimizers, shared_schedulers, rank, args, info)
                 logger.info(f"time {elapsed}, " +
                             f"episodes {info['episodes'].item():.0f}, " +
                             f"frames {num_frames/1e6:.2f}M, " +
+                            f"throughput {num_frames/(time.time()-start_time):.2f}f/s, " +
                             f"mean epr {info['run_epr'].item():.2f}, " +
                             f"run loss {info['run_loss'].item():.2f}")
                 last_disp_time = time.time()
@@ -304,7 +310,7 @@ def train(shared_models, shared_optimizers, shared_schedulers, rank, args, info)
                 episode_length, epr, eploss = 0, 0, 0
                 obs = env.reset()
                 states = {
-                    agent_name: preprocess_obs(ob)
+                    agent_name: preprocess_obs(ob, device=device)
                     for agent_name, ob in obs.items()
                 }
 
@@ -313,7 +319,7 @@ def train(shared_models, shared_optimizers, shared_schedulers, rank, args, info)
                 next_value = torch.zeros(1, 1)
             else:
                 if args.communication:
-                    flat_messages = preprocess_messages(messages)
+                    flat_messages = preprocess_messages(messages, args.vocab, device=device)
                     next_value, _, next_comm_value, _, _ = model((states[agent_name],
                                                                   flat_messages,
                                                                   hxs[agent_name]))
@@ -326,7 +332,8 @@ def train(shared_models, shared_optimizers, shared_schedulers, rank, args, info)
                              torch.cat(values_hist[agent_name]),
                              torch.cat(logps_hist[agent_name]),
                              torch.cat(actions_hist[agent_name]),
-                             np.asarray(rewards_hist[agent_name]))
+                             np.asarray(rewards_hist[agent_name]),
+                             device=device)
             eploss += loss.item()
 
             if args.communication:
@@ -335,25 +342,27 @@ def train(shared_models, shared_optimizers, shared_schedulers, rank, args, info)
                                       torch.cat(comm_values_hist[agent_name]),
                                       torch.cat(comm_logps_hist[agent_name]),
                                       torch.cat(comm_messages_hist[agent_name]),
-                                      np.asarray(rewards_hist[agent_name]))
+                                      np.asarray(rewards_hist[agent_name]),
+                                      device=device)
 
-            shared_optimizers[agent_name].zero_grad()
             if args.communication:
                 comm_loss.backward(retain_graph=True)
             loss.backward()
             torch.nn.utils.clip_grad_norm_(models[agent_name].parameters(), 40)
 
+        for agent_name in models.keys():
             for param, shared_param in zip(models[agent_name].parameters(), shared_models[agent_name].parameters()):
                 if shared_param.grad is None:
                     shared_param._grad = param.grad  # sync gradients with shared model
             shared_optimizers[agent_name].step()
+            shared_optimizers[agent_name].zero_grad()
             if dones["__all__"]:
                 shared_schedulers[agent_name].step()
 
 
 # Utils
 
-def preprocess_obs(obs):
+def preprocess_obs(obs, device):
     """
     Transfom w x h x c rgb numpy array to 1 x c x h x c torch tensor
     """
@@ -362,13 +371,19 @@ def preprocess_obs(obs):
     obs = obs.transpose((2, 0, 1))
     obs = torch.from_numpy(obs)
     obs = obs.unsqueeze(0)
-    return obs
+    return obs.to(device)
 
-def preprocess_messages(messages):
+def preprocess_messages(messages, vocab_size, device):
     """
     Transform a dict of int messages into a flattened one hot tensor
     """
-    return torch.zeros(1, 5*10)
+    indices = np.array([message for message in messages.values()]).flatten()
+    one_hot = np.zeros((indices.size, vocab_size)).astype('float32')
+    one_hot[np.arange(indices.size), indices] = 1
+    one_hot = one_hot.flatten()
+    processed_messages = torch.from_numpy(one_hot)
+    processed_messages = processed_messages.unsqueeze(0)
+    return processed_messages.to(device)
 
 def discount(x, gamma):
     """
