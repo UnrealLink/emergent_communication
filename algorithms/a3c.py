@@ -31,8 +31,7 @@ class A3CPolicy(nn.Module):
         self.conv1 = nn.Conv2d(channels, 32, 3, stride=2, padding=1)
         self.conv2 = nn.Conv2d(32, 32, 3, stride=2, padding=1)
         self.conv3 = nn.Conv2d(32, 32, 3, stride=2, padding=1)
-        self.conv4 = nn.Conv2d(32, 32, 3, stride=2, padding=1)
-        self.gru = nn.GRUCell(32 * 5 * 5 + vocab_size * n_agents, memsize)
+        self.gru = nn.GRUCell(512 + vocab_size * n_agents, memsize)
         self.critic_head = nn.Linear(memsize, 1)
         self.actor_head = nn.Linear(memsize, num_actions)
         if self.communication:
@@ -48,9 +47,8 @@ class A3CPolicy(nn.Module):
         visual = F.elu(self.conv1(visual))
         visual = F.elu(self.conv2(visual))
         visual = F.elu(self.conv3(visual))
-        visual = F.elu(self.conv4(visual))
         if self.communication:
-            full_input = torch.cat((visual.view(-1, 32 * 5 * 5), messages), 1)
+            full_input = torch.cat((visual.view(-1, 512), messages), 1)
             hx = self.gru(full_input, (hx))
             value = self.critic_head(hx)
             logp = F.log_softmax(self.actor_head(hx), dim=-1)
@@ -58,7 +56,7 @@ class A3CPolicy(nn.Module):
             comm_logp = F.log_softmax(self.comm_actor_head(hx), dim=-1)
             return (value, logp, comm_value, comm_logp, hx)
         else:
-            full_input = visual.view(-1, 32 * 5 * 5)
+            full_input = visual.view(-1, 512)
             hx = self.gru(full_input, (hx))
             value = self.critic_head(hx)
             logp = F.log_softmax(self.actor_head(hx), dim=-1)
@@ -151,6 +149,7 @@ def train(shared_models, shared_optimizers, shared_schedulers, rank, args, info)
     # make a local (unshared) environment
     env = args.env_maker(num_agents=args.agents)
     env.seed(args.seed + rank)
+    np.random.seed(args.seed + rank)
     torch.manual_seed(args.seed + rank)  # seed everything
     models = {
         f'agent-{i}': A3CPolicy(channels=3,
@@ -191,7 +190,7 @@ def train(shared_models, shared_optimizers, shared_schedulers, rank, args, info)
         hxs = {
             # rnn activation vector
             agent_name: torch.zeros(
-                1, 256).to(device) if dones[agent_name] else hx.detach()
+                1, args.hidden).to(device) if dones[agent_name] else hx.detach()
             for agent_name, hx in hxs.items()
         }
 
@@ -262,7 +261,7 @@ def train(shared_models, shared_optimizers, shared_schedulers, rank, args, info)
             obs, rewards, dones, _ = env.step(actions)
 
             if args.render:
-                env.render(time=1000)
+                env.render(time=200)
 
             states = {
                 agent_name: preprocess_obs(ob, device=device)
@@ -313,10 +312,16 @@ def train(shared_models, shared_optimizers, shared_schedulers, rank, args, info)
                     agent_name: preprocess_obs(ob, device=device)
                     for agent_name, ob in obs.items()
                 }
+                messages = {
+                    f'agent-{i}': 0
+                    for i in range(args.agents)
+                }
 
         for agent_name, model in models.items():
             if dones[agent_name]:
-                next_value = torch.zeros(1, 1)
+                next_value = torch.zeros(1, 1).to(device)
+                if args.communication:
+                    next_comm_value = torch.zeros(1, 1).to(device)
             else:
                 if args.communication:
                     flat_messages = preprocess_messages(messages, args.vocab, device=device)
@@ -327,7 +332,6 @@ def train(shared_models, shared_optimizers, shared_schedulers, rank, args, info)
                     next_value = model((states[agent_name], hxs[agent_name]))[0]
 
             values_hist[agent_name].append(next_value.detach())
-
             loss = cost_func(args,
                              torch.cat(values_hist[agent_name]),
                              torch.cat(logps_hist[agent_name]),
@@ -356,8 +360,7 @@ def train(shared_models, shared_optimizers, shared_schedulers, rank, args, info)
                     shared_param._grad = param.grad  # sync gradients with shared model
             shared_optimizers[agent_name].step()
             shared_optimizers[agent_name].zero_grad()
-            if dones["__all__"]:
-                shared_schedulers[agent_name].step()
+            shared_schedulers[agent_name].step()
 
 
 # Utils
@@ -367,7 +370,7 @@ def preprocess_obs(obs, device):
     Transfom w x h x c rgb numpy array to 1 x c x h x c torch tensor
     """
     obs = obs.astype('float32')
-    obs = cv2.resize(obs, dsize=(80, 80))
+    obs = cv2.resize(obs, dsize=(30, 30))
     obs = obs.transpose((2, 0, 1))
     obs = torch.from_numpy(obs)
     obs = obs.unsqueeze(0)

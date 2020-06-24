@@ -1,8 +1,12 @@
-import cv2
+"""
+Utilities functions used in various scripts.
+"""
+
 import os
-import matplotlib.pyplot as plt
 import numpy as np
+import cv2
 import logging
+import matplotlib.pyplot as plt
 
 
 def save_img(rgb_arr, path, name):

@@ -18,7 +18,6 @@ from social_dilemmas.envs.finder import FinderEnv
 
 from algorithms.a3c import A3CPolicy, SharedAdam, train
 
-
 os.environ['OMP_NUM_THREADS'] = '1'
 
 env_map = {
@@ -40,11 +39,11 @@ def get_args():
     parser.add_argument('--test', default=False, action='store_true', help='sets lr=0, chooses most likely actions')
     parser.add_argument('--rnn-steps', default=20, type=int, help='steps to train LSTM over')
     parser.add_argument('--lr', default=1e-4, type=float, help='learning rate')
-    parser.add_argument('--seed', default=1, type=int, help='seed random # generators (for reproducibility)')
+    parser.add_argument('--seed', default=1, type=int, help='set random seed')
     parser.add_argument('--gamma', default=0.99, type=float, help='rewards discount factor')
     parser.add_argument('--tau', default=1.0, type=float, help='generalized advantage estimation discount')
     parser.add_argument('--horizon', default=0.99, type=float, help='horizon for running averages')
-    parser.add_argument('--hidden', default=256, type=int, help='hidden size of GRU')
+    parser.add_argument('--hidden', default=128, type=int, help='hidden size of GRU')
     parser.add_argument('--communication', default=False, action='store_true', help='add communication')
     parser.add_argument('--vocab', default=10, type=int, help='vocabulary size for communication')
     parser.add_argument('--save', default=None, type=str, help='save directory name')
