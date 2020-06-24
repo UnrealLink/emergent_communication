@@ -132,11 +132,11 @@ def cost_func(args, values, logps, actions, rewards, device):
     return policy_loss + 0.5 * value_loss - 0.01 * entropy_loss
 
 
-def train(shared_models, shared_optimizers, shared_schedulers, rank, args, info):
+def train(shared_models, shared_optimizers, rank, args, info):
     """
     A3C worker training function
     """
-    logger = logging.getLogger('A3C' + args.env)
+    logger = logging.getLogger('A3C')
     utility_funcs.setup_logger(logger, args)
     if args.cpu_only:
         device = torch.device("cpu")
@@ -261,7 +261,7 @@ def train(shared_models, shared_optimizers, shared_schedulers, rank, args, info)
             obs, rewards, dones, _ = env.step(actions)
 
             if args.render:
-                env.render(time=200)
+                env.render()
 
             states = {
                 agent_name: preprocess_obs(ob, device=device)
@@ -360,7 +360,7 @@ def train(shared_models, shared_optimizers, shared_schedulers, rank, args, info)
                     shared_param._grad = param.grad  # sync gradients with shared model
             shared_optimizers[agent_name].step()
             shared_optimizers[agent_name].zero_grad()
-            shared_schedulers[agent_name].step()
+            # shared_schedulers[agent_name].step()
 
 
 # Utils

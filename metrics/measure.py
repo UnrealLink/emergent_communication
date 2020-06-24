@@ -55,13 +55,14 @@ if __name__ == "__main__":
     else:
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-    logger = logging.getLogger('Measure-SC' + args.env)
+    logger = logging.getLogger('Measure')
     utility_funcs.setup_logger(logger, args)
 
     logger.info("Loading env and agents...")
     env = env_map[args.env](num_agents=args.agents)
     env.seed(args.seed)
     torch.manual_seed(args.seed)
+    args.num_actions = env.action_space.n
 
     models = {
         f'agent-{i}': A3CPolicy(channels=3,
@@ -128,3 +129,5 @@ if __name__ == "__main__":
                 agent_name: 0
                 for agent_name in models.keys()
             }
+
+    logger.info("Rollout done.")

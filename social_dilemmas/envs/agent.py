@@ -250,7 +250,7 @@ class CleanupAgent(Agent):
 FINDER_ACTIONS = BASE_ACTIONS.copy()
 # FINDER_ACTIONS.update({7: 'FIRE'})  # Fire a penalty beam
 
-FINDER_VIEW_SIZE = 7
+FINDER_VIEW_SIZE = 5
 
 
 class FinderAgent(Agent):
