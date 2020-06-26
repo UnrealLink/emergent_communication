@@ -59,7 +59,7 @@ DEFAULT_COLOURS = {' ': [0, 0, 0],  # Black background
 
 class MapEnv(gym.Env):
 
-    def __init__(self, ascii_map, num_agents=1, render=True, color_map=None, max_steps=1000):
+    def __init__(self, ascii_map, num_agents=1, render=True, color_map=None, max_steps=1000, seed=1):
         """
 
         Parameters
@@ -74,6 +74,8 @@ class MapEnv(gym.Env):
         color_map: dict
             Specifies how to convert between ascii chars and colors
         """
+        # set random seed
+        self.set_seed(seed)
         self.num_agents = num_agents
         self.base_map = self.ascii_to_numpy(ascii_map)
         # map without agents or beams
@@ -146,10 +148,6 @@ class MapEnv(gym.Env):
             for col in range(arr.shape[1]):
                 arr[row, col] = ascii_list[row][col]
         return arr
-
-    def seed(self, seed):
-        random.seed(seed)
-        np.random.seed(seed)
 
     def step(self, actions):
         """Takes in a dict of actions and converts them to a map update
@@ -741,3 +739,8 @@ class MapEnv(gym.Env):
             return False
         else:
             return True
+    
+    def set_seed(self, seed):
+        "Set random seed"
+        random.seed(seed)
+        np.random.seed(seed)

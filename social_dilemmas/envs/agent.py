@@ -275,7 +275,7 @@ class FinderAgent(Agent):
     @property
     def observation_space(self):
         return Box(low=0.0, high=255.0, shape=(2 * self.view_len + 1,
-                                             2 * self.view_len + 1, 3), dtype=np.float32)
+                                               2 * self.view_len + 1, 3), dtype=np.float32)
 
     # def hit(self, char):
     #     if char == 'F':
@@ -297,4 +297,3 @@ class FinderAgent(Agent):
         else:
             # self.reward_this_turn += -0.1
             return char
-

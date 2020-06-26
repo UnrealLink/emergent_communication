@@ -147,9 +147,7 @@ def train(shared_models, shared_optimizers, rank, args, info):
     logger.info(f"Process {rank} started")
 
     # make a local (unshared) environment
-    env = args.env_maker(num_agents=args.agents)
-    env.seed(args.seed + rank)
-    np.random.seed(args.seed + rank)
+    env = args.env_maker(num_agents=args.agents, seed=args.seed + rank)
     torch.manual_seed(args.seed + rank)  # seed everything
     models = {
         f'agent-{i}': A3CPolicy(channels=3,
@@ -251,7 +249,7 @@ def train(shared_models, shared_optimizers, rank, args, info):
                 actions_hist[agent_name].append(action)
 
                 if args.communication:
-                    message = torch.exp(logp).multinomial(num_samples=1).data[0]
+                    message = torch.exp(comm_logp).multinomial(num_samples=1).data[0]
                     messages[agent_name] = message.cpu().numpy()[0]
 
                     comm_values_hist[agent_name].append(comm_value)

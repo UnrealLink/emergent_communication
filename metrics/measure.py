@@ -5,6 +5,8 @@ Script to measure instantaneous coordination from a trained model from A3C.
 import os
 import argparse
 import logging
+import random
+import numpy as np
 
 import torch
 
@@ -59,8 +61,9 @@ if __name__ == "__main__":
     utility_funcs.setup_logger(logger, args)
 
     logger.info("Loading env and agents...")
-    env = env_map[args.env](num_agents=args.agents)
-    env.seed(args.seed)
+    if args.agents > 2:
+        logger.warning("Measures are currently only done on two agents")
+    env = env_map[args.env](num_agents=args.agents, seed=args.seed)
     torch.manual_seed(args.seed)
     args.num_actions = env.action_space.n
 
@@ -77,6 +80,14 @@ if __name__ == "__main__":
     for agent_name, model in models.items():
         if model.try_load(args.save_dir, agent_name, logger) == 0:
             logger.warning("No trained models found.")
+
+    # Matrices for tracking messages/actions co-occurences
+    SC1 = np.zeros((args.vocab, args.num_actions))
+    SC2 = np.zeros((args.vocab, args.num_actions))
+    SC = [SC1, SC2]
+    IC1 = np.zeros((args.vocab, args.num_actions))
+    IC2 = np.zeros((args.vocab, args.num_actions))
+    IC = [IC1, IC2]
 
     logger.info("Starting rollout...")
     obs = env.reset()
@@ -102,11 +113,17 @@ if __name__ == "__main__":
                                                             hxs[agent_name]))
             hxs[agent_name] = hx
 
+            #TODO Should change to max
             action = torch.exp(logp).multinomial(num_samples=1).data[0]
             actions[agent_name] = action.cpu().numpy()[0]
 
-            message = torch.exp(logp).multinomial(num_samples=1).data[0]
+            message = torch.exp(comm_logp).multinomial(num_samples=1).data[0]
             messages[agent_name] = message.cpu().numpy()[0]
+
+        # Update measures here
+        for i in range(2):
+            SC[i][messages[f"agent-{i}"]][actions[f"agent-{i}"]] += 1
+            IC[i][messages[f"agent-{i}"]][actions[f"agent-{1-i}"]] += 1
 
         obs, rewards, dones, _ = env.step(actions)
 
@@ -122,7 +139,7 @@ if __name__ == "__main__":
                 for agent_name, ob in obs.items()
             }
             hxs = {
-                agent_name: torch.zeros(1, 256).to(device)
+                agent_name: torch.zeros(1, args.hidden).to(device)
                 for agent_name in models.keys()
             }
             messages = {
@@ -131,3 +148,14 @@ if __name__ == "__main__":
             }
 
     logger.info("Rollout done.")
+    logger.info("Computing measures")
+
+    sc1, sc2, ic1, ic2 = 0, 0, 0, 0
+
+    for m in range(args.vocab):
+        for a in range(args.num_actions):
+            sc1 += 0 if SC1[m, a] == 0 else SC1[m, a]/args.horizon * np.log(SC1[m, a]/(np.sum(SC1[m, :])*np.sum(SC1[:, a])/args.horizon))
+            sc2 += 0 if SC2[m, a] == 0 else SC2[m, a]/args.horizon * np.log(SC2[m, a]/(np.sum(SC2[m, :])*np.sum(SC2[:, a])/args.horizon))
+            ic1 += 0 if IC1[m, a] == 0 else IC1[m, a]/args.horizon * np.log(IC1[m, a]/(np.sum(IC1[m, :])*np.sum(IC1[:, a])/args.horizon))
+            ic2 += 0 if IC2[m, a] == 0 else IC2[m, a]/args.horizon * np.log(IC2[m, a]/(np.sum(IC2[m, :])*np.sum(IC2[:, a])/args.horizon))
+    logger.info(f"SC1: {sc1}, SC2: {sc2}, IC1: {ic1}, IC2: {ic2}")

@@ -6,8 +6,8 @@ from social_dilemmas.envs.map_env import MapEnv, ACTIONS
 
 class FinderEnv(MapEnv):
 
-    def __init__(self, ascii_map=FINDER_MAP, num_agents=1, render=False):
-        super().__init__(ascii_map, num_agents, render)
+    def __init__(self, ascii_map=FINDER_MAP, num_agents=1, render=False, **kwargs):
+        super().__init__(ascii_map, num_agents, render, **kwargs)
         self.apple_points = None
         self.timer = 0
 
