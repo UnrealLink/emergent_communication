@@ -173,7 +173,7 @@ def train(shared_models, shared_optimizers, rank, args, info):
     }
 
     start_time = last_disp_time = time.time()
-    episode_length, epr, eploss = 0, 0, 0  # bookkeeping
+    episode_length, epr, last_epr, eploss = 0, 0, 0, 0  # bookkeeping
     dones = {
         f'agent-{i}': True
         for i in range(args.agents)
@@ -288,9 +288,8 @@ def train(shared_models, shared_optimizers, rank, args, info):
 
             if dones["__all__"]:  # update shared data
                 info['episodes'] += 1
-                interp = 1 if info['episodes'][0] == 1 else args.horizon
-                info['run_epr'].mul_(1-interp).add_(interp * epr)
-                info['run_loss'].mul_(1-interp).add_(interp * eploss)
+                info['run_epr'].add_(-last_epr/args.agents).add_(epr/args.agents)
+                last_epr = epr
 
             if rank == 0 and time.time() - last_disp_time > 60:  # print info ~ every minute
                 start_frames = int(info["start_frames"].item())
@@ -300,8 +299,7 @@ def train(shared_models, shared_optimizers, rank, args, info):
                             f"episodes {info['episodes'].item():.0f}, " +
                             f"frames {num_frames/1e6:.2f}M, " +
                             f"throughput {(num_frames - start_frames)/(time.time()-start_time):.2f}f/s, " +
-                            f"mean epr {info['run_epr'].item():.2f}, " +
-                            f"run loss {info['run_loss'].item():.2f}")
+                            f"mean epr {info['run_epr'].item():.2f}, ")
                 last_disp_time = time.time()
 
             if dones["__all__"]:  # maybe print info.
