@@ -288,7 +288,7 @@ def train(shared_models, shared_optimizers, rank, args, info):
 
             if dones["__all__"]:  # update shared data
                 info['episodes'] += 1
-                info['run_epr'].add_(-last_epr/args.agents).add_(epr/args.agents)
+                info['run_epr'].add_(-last_epr/args.processes).add_(epr/args.processes)
                 last_epr = epr
 
             if rank == 0 and time.time() - last_disp_time > 60:  # print info ~ every minute
