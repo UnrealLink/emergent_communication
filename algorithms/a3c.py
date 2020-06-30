@@ -147,7 +147,7 @@ def train(shared_models, shared_optimizers, rank, args, info):
     logger.info(f"Process {rank} started")
 
     # make a local (unshared) environment
-    env = args.env_maker(num_agents=args.agents, seed=args.seed + rank)
+    env = args.env_maker(num_agents=args.agents, seed=args.seed + rank, view_size=args.view_size)
     torch.manual_seed(args.seed + rank)  # seed everything
     models = {
         f'agent-{i}': A3CPolicy(channels=3,
@@ -278,12 +278,12 @@ def train(shared_models, shared_optimizers, rank, args, info):
             info['frames'].add_(1)
             num_frames = int(info['frames'].item())
 
-            if num_frames % 1e5 == 0:  # save every 0.1M frames
+            if num_frames % 1e6 == 0:  # save every 1M frames
                 logger.info(f"{num_frames/1e6:.2f}M frames: saving models as \
-                               model.<agent_name>.{num_frames/1e5:.0f}.tar")
+                               model.<agent_name>.{num_frames/1e6:.0f}.tar")
                 for agent_name, shared_model in shared_models.items():
                     model_path = os.path.join(args.save_dir,
-                                              f'model.{agent_name}.{num_frames/1e5:.0f}.tar')
+                                              f'model.{agent_name}.{num_frames/1e6:.0f}.tar')
                     torch.save(shared_model.state_dict(), model_path)
 
             if dones["__all__"]:  # update shared data
@@ -293,12 +293,13 @@ def train(shared_models, shared_optimizers, rank, args, info):
                 info['run_loss'].mul_(1-interp).add_(interp * eploss)
 
             if rank == 0 and time.time() - last_disp_time > 60:  # print info ~ every minute
+                start_frames = int(info["start_frames"].item())
                 elapsed = time.strftime(
                     "%Hh %Mm %Ss", time.gmtime(time.time() - start_time))
                 logger.info(f"time {elapsed}, " +
                             f"episodes {info['episodes'].item():.0f}, " +
                             f"frames {num_frames/1e6:.2f}M, " +
-                            f"throughput {num_frames/(time.time()-start_time):.2f}f/s, " +
+                            f"throughput {(num_frames - start_frames)/(time.time()-start_time):.2f}f/s, " +
                             f"mean epr {info['run_epr'].item():.2f}, " +
                             f"run loss {info['run_loss'].item():.2f}")
                 last_disp_time = time.time()

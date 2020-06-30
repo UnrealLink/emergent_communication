@@ -270,7 +270,7 @@ class FinderAgent(Agent):
     # defined in two places
     def action_map(self, action_number):
         """Maps action_number to a desired action in the map"""
-        return HARVEST_ACTIONS[action_number]
+        return FINDER_ACTIONS[action_number]
 
     @property
     def observation_space(self):
@@ -297,3 +297,44 @@ class FinderAgent(Agent):
         else:
             # self.reward_this_turn += -0.1
             return char
+
+TREASURE_ACTIONS = BASE_ACTIONS.copy()
+
+TREASURE_VIEW_SIZE = 2
+
+class TreasureAgent(Agent):
+
+    def __init__(self, agent_id, start_pos, start_orientation, grid, view_len=TREASURE_VIEW_SIZE):
+        self.view_len = view_len
+        super().__init__(agent_id, start_pos, start_orientation, grid, view_len, view_len)
+        self.update_agent_pos(start_pos)
+        self.update_agent_rot(start_orientation)
+        self.consumed = False
+
+    @property
+    def action_space(self):
+        return Discrete(7)
+
+    # Ugh, this is gross, this leads to the actions basically being
+    # defined in two places
+    def action_map(self, action_number):
+        """Maps action_number to a desired action in the map"""
+        return TREASURE_ACTIONS[action_number]
+
+    @property
+    def observation_space(self):
+        return Box(low=0.0, high=255.0, shape=(2 * self.view_len + 1,
+                                               2 * self.view_len + 1, 3), dtype=np.float32)
+
+    def get_done(self):
+        return False
+
+    def consume(self, char):
+        """Defines how an agent interacts with the char it is standing on"""
+        if char == 'A':
+            self.reward_this_turn += 1.
+            self.consumed = True
+            return ' '
+        else:
+            return char
+

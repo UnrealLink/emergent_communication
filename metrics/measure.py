@@ -13,6 +13,7 @@ import torch
 from social_dilemmas.envs.cleanup import CleanupEnv
 from social_dilemmas.envs.harvest import HarvestEnv
 from social_dilemmas.envs.finder import FinderEnv
+from social_dilemmas.envs.treasure import TreasureEnv
 
 import utils.utility_funcs as utility_funcs
 
@@ -20,6 +21,7 @@ from algorithms.a3c import A3CPolicy, preprocess_messages, preprocess_obs
 
 env_map = {
     'finder': FinderEnv,
+    'treasure': TreasureEnv,
     'harvest': HarvestEnv,
     'cleanup': CleanupEnv,
 }
@@ -34,6 +36,7 @@ def get_args():
     parser.add_argument('--horizon', default=1000, type=int, help='number of steps to measure on')
     parser.add_argument('--seed', default=1, type=int, help='set random seed')
     parser.add_argument('--vocab', default=10, type=int, help='vocabulary size for communication')
+    parser.add_argument('--view-size', default=0, type=int, help='view size of agents (0 takes env default)')
     parser.add_argument('--hidden', default=128, type=int, help='hidden size of GRU')
     parser.add_argument('--save', default=None, type=str, help='save directory name')
     parser.add_argument('--cpu-only', default=False, action='store_true', help='prevent gpu usage')
@@ -57,13 +60,16 @@ if __name__ == "__main__":
     else:
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
+    if args.view_size == 0:
+        args.view_size = None
+
     logger = logging.getLogger('Measure')
     utility_funcs.setup_logger(logger, args)
 
     logger.info("Loading env and agents...")
     if args.agents > 2:
         logger.warning("Measures are currently only done on two agents")
-    env = env_map[args.env](num_agents=args.agents, seed=args.seed)
+    env = env_map[args.env](num_agents=args.agents, seed=args.seed, view_size=args.view_size)
     torch.manual_seed(args.seed)
     args.num_actions = env.action_space.n
 

@@ -59,7 +59,7 @@ DEFAULT_COLOURS = {' ': [0, 0, 0],  # Black background
 
 class MapEnv(gym.Env):
 
-    def __init__(self, ascii_map, num_agents=1, render=True, color_map=None, max_steps=1000, seed=1):
+    def __init__(self, ascii_map, num_agents=1, render=True, color_map=None, max_steps=1000, seed=1, **kwargs):
         """
 
         Parameters
@@ -655,8 +655,10 @@ class MapEnv(gym.Env):
         assert is_free_cell, 'There are not enough spawn points! Check your map?'
         return np.array(self.spawn_points[spawn_index])
 
-    def spawn_rotation(self):
+    def spawn_rotation(self, fixed=False):
         """Return a randomly selected initial rotation for an agent"""
+        if fixed:
+            return 'UP'
         rand_int = np.random.randint(len(ORIENTATIONS.keys()))
         return list(ORIENTATIONS.keys())[rand_int]
 

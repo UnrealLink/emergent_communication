@@ -15,6 +15,7 @@ import utils.utility_funcs as utility_funcs
 from social_dilemmas.envs.cleanup import CleanupEnv
 from social_dilemmas.envs.harvest import HarvestEnv
 from social_dilemmas.envs.finder import FinderEnv
+from social_dilemmas.envs.treasure import TreasureEnv
 
 from algorithms.a3c import A3CPolicy, SharedAdam, train
 
@@ -22,6 +23,7 @@ os.environ['OMP_NUM_THREADS'] = '1'
 
 env_map = {
     'finder': FinderEnv,
+    'treasure': TreasureEnv,
     'harvest': HarvestEnv,
     'cleanup': CleanupEnv,
 }
@@ -46,6 +48,7 @@ def get_args():
     parser.add_argument('--hidden', default=128, type=int, help='hidden size of GRU')
     parser.add_argument('--communication', default=False, action='store_true', help='add communication')
     parser.add_argument('--vocab', default=10, type=int, help='vocabulary size for communication')
+    parser.add_argument('--view-size', default=0, type=int, help='view size of agents (0 takes env default)')
     parser.add_argument('--save', default=None, type=str, help='save directory name')
     parser.add_argument('--cpu-only', default=False, action='store_true', help='prevent gpu usage')
     return parser.parse_args()
@@ -73,6 +76,9 @@ if __name__ == "__main__":
     else:
         args.save_dir = os.path.join(dir_path, f'saves/{args.save}')
 
+    if args.view_size == 0:
+        args.view_size = None
+
     args.env_maker = env_map[args.env]
     single_env = args.env_maker(num_agents=1)
     args.num_actions = single_env.action_space.n # get the action space of this game
@@ -81,6 +87,17 @@ if __name__ == "__main__":
 
     logger = logging.getLogger('A3C')
     utility_funcs.setup_logger(logger, args)
+
+    logger.debug(f"Run parameters:\n" +
+        f"\t Env: {args.env}\n" +
+        f"\t Processes: {args.processes}\n" +
+        f"\t Agents: {args.agents}\n" +
+        f"\t Learning rate: {args.lr}\n" +
+        f"\t Communication: {args.communication}\n" +
+        f"\t Vocab size: {args.vocab}\n" +
+        f"\t LSTM size: {args.hidden}\n" +
+        f"\t View size: {args.view_size}\n" +
+        f"\t Seed: {args.seed}\n")
 
     logger.info("Creating shared models and optimizers.")
     torch.manual_seed(args.seed)
@@ -105,16 +122,17 @@ if __name__ == "__main__":
 
     info = {
         info_name: torch.DoubleTensor([0]).share_memory_() 
-        for info_name in ['run_epr', 'run_loss', 'episodes', 'frames']
+        for info_name in ['run_epr', 'run_loss', 'episodes', 'frames', 'start_frames']
     }
 
     logger.info("Loading previous shared models parameters.")
     frames = []
     for agent_name, shared_model in shared_models.items():
-        frames.append(shared_model.try_load(args.save_dir, agent_name, logger) * 1e5)
+        frames.append(shared_model.try_load(args.save_dir, agent_name, logger) * 1e6)
     if min(frames) != max(frames):
         logger.warning("Loaded models do not have the same number of training frames between agents")
     info['frames'] += max(frames)
+    info['start_frames'] += max(frames)
 
     logger.info("Launching processes...")
     processes = []
