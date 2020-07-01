@@ -56,7 +56,7 @@ class TreasureEnv(MapEnv):
     def spawn_treasure(self):
         shuffled_list = np.random.permutation(self.treasure_points)
         for row, col in shuffled_list:
-            if (self.agents['agent-0'].pos != [row, col]).all():
+            if (self.agents['agent-0'].pos != [row, col]).any():
                 self.update_map([(row, col, 'A')])
                 break
 
