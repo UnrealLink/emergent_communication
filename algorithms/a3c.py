@@ -391,7 +391,7 @@ def preprocess_obs(obs, device):
     Transfom w x h x c rgb numpy array to 1 x c x h x c torch tensor
     """
     obs = obs.astype('float32')
-    obs = cv2.resize(obs, dsize=(30, 30))
+    obs = cv2.resize(obs, dsize=(30, 30))/255
     obs = obs.transpose((2, 0, 1))
     obs = torch.from_numpy(obs)
     obs = obs.unsqueeze(0)

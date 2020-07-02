@@ -57,11 +57,7 @@ class FinderEnv(MapEnv):
         while not(spawned):
             rand_coords = np.array([np.random.randint(1, len(self.world_map) - 1), 
                                     np.random.randint(1, len(self.world_map[0]) - 1)])
-            conflict = False
-            for agent in self.agents.values():
-                if (agent.pos == rand_coords).all():
-                    conflict = True
-            if not(conflict):
+            if self.world_map[rand_coords[0]][rand_coords[1]] == ' ':
                 self.update_map([(rand_coords[0], rand_coords[1], 'A')])
                 spawned = True
         
