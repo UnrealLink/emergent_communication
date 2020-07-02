@@ -6,7 +6,9 @@ import os
 import argparse
 import logging
 import random
+import time
 import numpy as np
+import matplotlib.pyplot as plt
 
 import torch
 
@@ -94,6 +96,7 @@ if __name__ == "__main__":
     IC1 = np.zeros((args.vocab, args.num_actions))
     IC2 = np.zeros((args.vocab, args.num_actions))
     IC = [IC1, IC2]
+    A = np.zeros(args.num_actions)
 
     logger.info("Starting rollout...")
     obs = env.reset()
@@ -109,6 +112,8 @@ if __name__ == "__main__":
         agent_name: 0
         for agent_name in models.keys()
     }
+
+    # fig = plt.gcf()
 
     for _ in range(args.horizon):
         actions = {}
@@ -130,6 +135,7 @@ if __name__ == "__main__":
         for i in range(2):
             SC[i][messages[f"agent-{i}"]][actions[f"agent-{i}"]] += 1
             IC[i][messages[f"agent-{i}"]][actions[f"agent-{1-i}"]] += 1
+        A[actions['agent-0']] += 1
 
         obs, rewards, dones, _ = env.step(actions)
 
@@ -137,6 +143,16 @@ if __name__ == "__main__":
             agent_name: preprocess_obs(ob, device=device)
             for agent_name, ob in obs.items()
         }
+
+        # fig.clf()
+
+        # map_with_agents = env.get_map_with_agents()
+        # rgb_arr = env.map_to_colors(map_with_agents)
+        # plt.imshow(rgb_arr, interpolation='nearest')
+        # plt.imshow(states['agent-0'].cpu().numpy().squeeze(0).transpose((1, 2, 0))/255, interpolation='nearest')
+
+        # fig.show()
+        # fig.canvas.draw()
 
         if dones["__all__"]:
             obs = env.reset()
@@ -165,3 +181,4 @@ if __name__ == "__main__":
             ic1 += 0 if IC1[m, a] == 0 else IC1[m, a]/args.horizon * np.log(IC1[m, a]/(np.sum(IC1[m, :])*np.sum(IC1[:, a])/args.horizon))
             ic2 += 0 if IC2[m, a] == 0 else IC2[m, a]/args.horizon * np.log(IC2[m, a]/(np.sum(IC2[m, :])*np.sum(IC2[:, a])/args.horizon))
     logger.info(f"SC1: {sc1}, SC2: {sc2}, IC1: {ic1}, IC2: {ic2}")
+    print(A)

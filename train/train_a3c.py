@@ -17,7 +17,7 @@ from social_dilemmas.envs.harvest import HarvestEnv
 from social_dilemmas.envs.finder import FinderEnv
 from social_dilemmas.envs.treasure import TreasureEnv
 
-from algorithms.a3c import A3CPolicy, SharedAdam, train
+from algorithms.a3c import A3CPolicy, SharedAdam, SharedRMSprop, train
 
 os.environ['OMP_NUM_THREADS'] = '1'
 
@@ -41,6 +41,7 @@ def get_args():
     parser.add_argument('--test', default=False, action='store_true', help='sets lr=0, chooses most likely actions')
     parser.add_argument('--rnn-steps', default=20, type=int, help='steps to train LSTM over')
     parser.add_argument('--lr', default=1e-4, type=float, help='learning rate')
+    parser.add_argument('--optim', default='adam', type=str, help='can be either adam or rmsprop')
     parser.add_argument('--seed', default=1, type=int, help='set random seed')
     parser.add_argument('--gamma', default=0.99, type=float, help='rewards discount factor')
     parser.add_argument('--tau', default=1.0, type=float, help='generalized advantage estimation discount')
@@ -110,10 +111,16 @@ if __name__ == "__main__":
                                 n_agents=args.agents).share_memory().to(device)
         for i in range(args.agents)
     }
-    shared_optimizers = {
-        f'agent-{i}': SharedAdam(shared_models[f'agent-{i}'].parameters(), lr=args.lr)
-        for i in range(args.agents)
-    }
+    if args.optim == 'rmsprop':
+        shared_optimizers = {
+            f'agent-{i}': SharedRMSprop(shared_models[f'agent-{i}'].parameters(), lr=args.lr)
+            for i in range(args.agents)
+        }
+    else:
+        shared_optimizers = {
+            f'agent-{i}': SharedAdam(shared_models[f'agent-{i}'].parameters(), lr=args.lr)
+            for i in range(args.agents)
+        }
     # shared_schedulers = {
     #     f'agent-{i}': torch.optim.lr_scheduler.StepLR(shared_optimizers[f'agent-{i}'],
     #                                                   step_size=32, gamma=0.1)

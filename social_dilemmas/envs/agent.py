@@ -313,7 +313,7 @@ class TreasureAgent(Agent):
 
     @property
     def action_space(self):
-        return Discrete(7)
+        return Discrete(len(TREASURE_ACTIONS))
 
     # Ugh, this is gross, this leads to the actions basically being
     # defined in two places

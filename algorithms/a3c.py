@@ -44,9 +44,9 @@ class A3CPolicy(nn.Module):
             visual, messages, hx = inputs
         else:
             visual, hx = inputs
-        visual = F.elu(self.conv1(visual))
-        visual = F.elu(self.conv2(visual))
-        visual = F.elu(self.conv3(visual))
+        visual = F.relu(self.conv1(visual))
+        visual = F.relu(self.conv2(visual))
+        visual = F.relu(self.conv3(visual))
         if self.communication:
             full_input = torch.cat((visual.view(-1, 512), messages), 1)
             hx = self.gru(full_input, (hx))
@@ -94,6 +94,30 @@ class SharedAdam(torch.optim.Adam):
                 state['shared_steps'], state['step'] = torch.zeros(1).share_memory_(), 0
                 state['exp_avg'] = param.data.new().resize_as_(param.data).zero_().share_memory_()
                 state['exp_avg_sq'] = param.data.new().resize_as_(param.data).zero_().share_memory_()
+
+        # pylint: disable=unused-variable
+        def step(self, closure=None):
+            for group in self.param_groups:
+                for param in group['params']:
+                    if param.grad is None:
+                        continue
+                    self.state[param]['shared_steps'] += 1
+                    # a "step += 1"  comes later
+                    self.state[param]['step'] = self.state[param]['shared_steps'][0] - 1
+            super.step(closure)
+
+class SharedRMSprop(torch.optim.RMSprop):
+    """
+    Extends a pytorch optimizer so it shares grads across processes
+    """
+    def __init__(self, params, lr=1e-3, alpha=0.99, eps=1e-8, weight_decay=0):
+        super(SharedRMSprop, self).__init__(params, lr, alpha, eps, weight_decay)
+        for group in self.param_groups:
+            for param in group['params']:
+                state = self.state[param]
+                # pylint: disable=line-too-long
+                state['shared_steps'], state['step'] = torch.zeros(1).share_memory_(), 0
+                state['square_avg'] = param.data.new().resize_as_(param.data).zero_().share_memory_()
 
         # pylint: disable=unused-variable
         def step(self, closure=None):
