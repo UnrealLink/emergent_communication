@@ -63,7 +63,7 @@ if __name__ == "__main__":
     args = get_args()
     if args.render:
         args.processes = 1
-        args.test = True # render mode -> test mode w one process
+        # args.test = True # render mode -> test mode w one process
     if args.test:
         args.lr = 0 # don't train in render mode
     if not args.communication:

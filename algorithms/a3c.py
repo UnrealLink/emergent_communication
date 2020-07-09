@@ -292,7 +292,7 @@ def train(shared_models, shared_optimizers, rank, args, info):
 
             if args.render:
                 env.render()
-                time.sleep(0.5)
+                # time.sleep(0.5)
 
             states = {
                 agent_name: preprocess_obs(ob, device=device)
@@ -321,7 +321,7 @@ def train(shared_models, shared_optimizers, rank, args, info):
 
             if dones["__all__"]:  # update shared data
                 info['episodes'] += 1
-                info['run_epr'].add_(epr/args.processes)
+                info['run_epr'].add_(epr)
 
             if rank == 0 and time.time() - last_disp_time > 60:  # print info ~ every minute
                 start_frames = int(info["start_frames"].item())
@@ -332,6 +332,7 @@ def train(shared_models, shared_optimizers, rank, args, info):
                             f"frames {num_frames/1e6:.2f}M, " +
                             f"throughput {(num_frames - start_frames)/(time.time()-start_time):.2f}f/s, " +
                             f"mean epr {info['run_epr'].item()/(info['episodes'].item()-last_nb_ep):.2f}, ")
+                print(info['episodes'].item()-last_nb_ep)
                 last_disp_time = time.time()
                 last_nb_ep = info['episodes'].item()
                 info['run_epr'].add_(-info['run_epr'].item())
