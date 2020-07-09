@@ -26,6 +26,8 @@ DEFAULT_COLOURS = {' ': [0, 0, 0],  # Black background
                    '': [180, 180, 180],  # Grey board walls
                    '@': [180, 180, 180],  # Grey board walls
                    'A': [0, 255, 0],  # Green apples
+                   'B': [255, 0, 0], # Red apples
+                   'C': [0, 0, 255], # Blue apple
                    'F': [255, 255, 0],  # Yellow fining beam
                    'P': [159, 67, 255],  # Purple player
 
@@ -59,7 +61,7 @@ DEFAULT_COLOURS = {' ': [0, 0, 0],  # Black background
 
 class MapEnv(gym.Env):
 
-    def __init__(self, ascii_map, num_agents=1, render=True, color_map=None, max_steps=1000, seed=1, **kwargs):
+    def __init__(self, ascii_map, num_agents=1, render=True, color_map=None, max_steps=300, seed=1, **kwargs):
         """
 
         Parameters
@@ -340,6 +342,11 @@ class MapEnv(gym.Env):
         fig.clf()
 
         rgb_arr = self.map_to_colors(map_with_agents)
+
+        # agent = self.agents['agent-0']
+        # rgb_arr = self.map_to_colors(agent.get_state(), self.color_map)
+        # rgb_arr = self.rotate_view(agent.orientation, rgb_arr)
+
         plt.imshow(rgb_arr, interpolation='nearest')
         
         if filename is None:

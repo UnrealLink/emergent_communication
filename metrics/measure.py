@@ -16,6 +16,7 @@ from social_dilemmas.envs.cleanup import CleanupEnv
 from social_dilemmas.envs.harvest import HarvestEnv
 from social_dilemmas.envs.finder import FinderEnv
 from social_dilemmas.envs.treasure import TreasureEnv
+from social_dilemmas.envs.target import TargetEnv
 
 import utils.utility_funcs as utility_funcs
 
@@ -26,6 +27,7 @@ env_map = {
     'treasure': TreasureEnv,
     'harvest': HarvestEnv,
     'cleanup': CleanupEnv,
+    'target': TargetEnv,
 }
 
 def get_args():
@@ -97,6 +99,7 @@ if __name__ == "__main__":
     IC2 = np.zeros((args.vocab, args.num_actions))
     IC = [IC1, IC2]
     A = np.zeros(args.num_actions)
+    M = np.zeros(args.vocab)
 
     logger.info("Starting rollout...")
     obs = env.reset()
@@ -125,17 +128,18 @@ if __name__ == "__main__":
             hxs[agent_name] = hx
 
             #TODO Should change to max
-            action = torch.exp(logp).multinomial(num_samples=1).data[0]
-            actions[agent_name] = action.cpu().numpy()[0]
+            action = torch.argmax(logp).data
+            actions[agent_name] = int(action.cpu().numpy())
 
-            message = torch.exp(comm_logp).multinomial(num_samples=1).data[0]
-            messages[agent_name] = message.cpu().numpy()[0]
+            message = torch.argmax(comm_logp).data
+            messages[agent_name] = int(message.cpu().numpy())
 
         # Update measures here
         for i in range(2):
             SC[i][messages[f"agent-{i}"]][actions[f"agent-{i}"]] += 1
             IC[i][messages[f"agent-{i}"]][actions[f"agent-{1-i}"]] += 1
-        A[actions['agent-0']] += 1
+        A[actions['agent-1']] += 1
+        M[messages['agent-1']] += 1
 
         obs, rewards, dones, _ = env.step(actions)
 
@@ -174,6 +178,11 @@ if __name__ == "__main__":
 
     sc1, sc2, ic1, ic2 = 0, 0, 0, 0
 
+    print(SC1)
+    print(SC2)
+    print(IC1)
+    print(IC2)
+
     for m in range(args.vocab):
         for a in range(args.num_actions):
             sc1 += 0 if SC1[m, a] == 0 else SC1[m, a]/args.horizon * np.log(SC1[m, a]/(np.sum(SC1[m, :])*np.sum(SC1[:, a])/args.horizon))
@@ -182,3 +191,4 @@ if __name__ == "__main__":
             ic2 += 0 if IC2[m, a] == 0 else IC2[m, a]/args.horizon * np.log(IC2[m, a]/(np.sum(IC2[m, :])*np.sum(IC2[:, a])/args.horizon))
     logger.info(f"SC1: {sc1}, SC2: {sc2}, IC1: {ic1}, IC2: {ic2}")
     print(A)
+    print(M)

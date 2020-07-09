@@ -7,8 +7,8 @@ import os
 import time
 import glob
 import logging
-
 import numpy as np
+import matplotlib.pyplot as plt
 from scipy.signal import lfilter
 import cv2
 
@@ -31,7 +31,7 @@ class A3CPolicy(nn.Module):
         self.conv1 = nn.Conv2d(channels, 32, 3, stride=2, padding=1)
         self.conv2 = nn.Conv2d(32, 32, 3, stride=2, padding=1)
         self.conv3 = nn.Conv2d(32, 32, 3, stride=2, padding=1)
-        self.gru = nn.GRUCell(512 + vocab_size * n_agents, memsize)
+        self.gru = nn.GRUCell(128 + vocab_size * n_agents, memsize)
         self.critic_head = nn.Linear(memsize, 1)
         self.actor_head = nn.Linear(memsize, num_actions)
         if self.communication:
@@ -48,7 +48,7 @@ class A3CPolicy(nn.Module):
         visual = F.relu(self.conv2(visual))
         visual = F.relu(self.conv3(visual))
         if self.communication:
-            full_input = torch.cat((visual.view(-1, 512), messages), 1)
+            full_input = torch.cat((visual.view(-1, 128), messages), 1)
             hx = self.gru(full_input, (hx))
             value = self.critic_head(hx)
             logp = F.log_softmax(self.actor_head(hx), dim=-1)
@@ -56,7 +56,7 @@ class A3CPolicy(nn.Module):
             comm_logp = F.log_softmax(self.comm_actor_head(hx), dim=-1)
             return (value, logp, comm_value, comm_logp, hx)
         else:
-            full_input = visual.view(-1, 512)
+            full_input = visual.view(-1, 128)
             hx = self.gru(full_input, (hx))
             value = self.critic_head(hx)
             logp = F.log_softmax(self.actor_head(hx), dim=-1)
@@ -197,14 +197,14 @@ def train(shared_models, shared_optimizers, rank, args, info):
     }
 
     start_time = last_disp_time = time.time()
-    episode_length, epr, last_epr, eploss = 0, 0, 0, 0  # bookkeeping
+    episode_length, epr, eploss, last_nb_ep = 0, 0, 0, 0  # bookkeeping
     dones = {
         f'agent-{i}': True
         for i in range(args.agents)
     }
 
     # openai baselines uses 40M frames...we'll use 80M
-    while info['frames'][0] <= 8e7 or args.test:
+    while info['frames'][0] <= args.horizon or args.test:
         for agent_name, model in models.items():
             # sync with shared model
             model.load_state_dict(shared_models[agent_name].state_dict())
@@ -264,17 +264,25 @@ def train(shared_models, shared_optimizers, rank, args, info):
                 hxs[agent_name] = hx # update lstm state
 
                 # select action
-                # logp.max(1)[1].data if args.test else
-                action = torch.exp(logp).multinomial(num_samples=1).data[0]
-                actions[agent_name] = action.cpu().numpy()[0]
+                if args.test:
+                    action = torch.argmax(logp).unsqueeze(0).data
+                    actions[agent_name] = int(action.cpu().numpy()[0])
+                else:
+                    action = torch.exp(logp).multinomial(num_samples=1).data[0]
+                    actions[agent_name] = action.cpu().numpy()[0]
 
                 values_hist[agent_name].append(value)
                 logps_hist[agent_name].append(logp)
                 actions_hist[agent_name].append(action)
 
                 if args.communication:
-                    message = torch.exp(comm_logp).multinomial(num_samples=1).data[0]
-                    messages[agent_name] = message.cpu().numpy()[0]
+                    if args.test:
+                        message = torch.argmax(comm_logp).unsqueeze(0).data
+                        messages[agent_name] = int(message.cpu().numpy()[0])
+                        # if agent_name == 'agent-1': print(message)
+                    else:
+                        message = torch.exp(comm_logp).multinomial(num_samples=1).data[0]
+                        messages[agent_name] = message.cpu().numpy()[0]
 
                     comm_values_hist[agent_name].append(comm_value)
                     comm_logps_hist[agent_name].append(comm_logp)
@@ -284,6 +292,7 @@ def train(shared_models, shared_optimizers, rank, args, info):
 
             if args.render:
                 env.render()
+                time.sleep(0.5)
 
             states = {
                 agent_name: preprocess_obs(ob, device=device)
@@ -312,8 +321,7 @@ def train(shared_models, shared_optimizers, rank, args, info):
 
             if dones["__all__"]:  # update shared data
                 info['episodes'] += 1
-                info['run_epr'].add_(-last_epr/args.processes).add_(epr/args.processes)
-                last_epr = epr
+                info['run_epr'].add_(epr/args.processes)
 
             if rank == 0 and time.time() - last_disp_time > 60:  # print info ~ every minute
                 start_frames = int(info["start_frames"].item())
@@ -323,8 +331,10 @@ def train(shared_models, shared_optimizers, rank, args, info):
                             f"episodes {info['episodes'].item():.0f}, " +
                             f"frames {num_frames/1e6:.2f}M, " +
                             f"throughput {(num_frames - start_frames)/(time.time()-start_time):.2f}f/s, " +
-                            f"mean epr {info['run_epr'].item():.2f}, ")
+                            f"mean epr {info['run_epr'].item()/(info['episodes'].item()-last_nb_ep):.2f}, ")
                 last_disp_time = time.time()
+                last_nb_ep = info['episodes'].item()
+                info['run_epr'].add_(-info['run_epr'].item())
 
             if dones["__all__"]:  # maybe print info.
                 episode_length, epr, eploss = 0, 0, 0
@@ -391,7 +401,7 @@ def preprocess_obs(obs, device):
     Transfom w x h x c rgb numpy array to 1 x c x h x c torch tensor
     """
     obs = obs.astype('float32')
-    obs = cv2.resize(obs, dsize=(30, 30))/255
+    obs = cv2.resize(obs, dsize=(10, 10))/255
     obs = obs.transpose((2, 0, 1))
     obs = torch.from_numpy(obs)
     obs = obs.unsqueeze(0)

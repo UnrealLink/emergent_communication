@@ -16,6 +16,7 @@ from social_dilemmas.envs.cleanup import CleanupEnv
 from social_dilemmas.envs.harvest import HarvestEnv
 from social_dilemmas.envs.finder import FinderEnv
 from social_dilemmas.envs.treasure import TreasureEnv
+from social_dilemmas.envs.target import TargetEnv
 
 from algorithms.a3c import A3CPolicy, SharedAdam, SharedRMSprop, train
 
@@ -26,6 +27,7 @@ env_map = {
     'treasure': TreasureEnv,
     'harvest': HarvestEnv,
     'cleanup': CleanupEnv,
+    'target': TargetEnv,
 }
 
 
@@ -45,11 +47,11 @@ def get_args():
     parser.add_argument('--seed', default=1, type=int, help='set random seed')
     parser.add_argument('--gamma', default=0.99, type=float, help='rewards discount factor')
     parser.add_argument('--tau', default=1.0, type=float, help='generalized advantage estimation discount')
-    parser.add_argument('--horizon', default=0.99, type=float, help='horizon for running averages')
+    parser.add_argument('--horizon', default=8e7, type=float, help='max number of steps')
     parser.add_argument('--hidden', default=128, type=int, help='hidden size of GRU')
     parser.add_argument('--communication', default=False, action='store_true', help='add communication')
     parser.add_argument('--vocab', default=10, type=int, help='vocabulary size for communication')
-    parser.add_argument('--view-size', default=0, type=int, help='view size of agents (0 takes env default)')
+    parser.add_argument('--view-size', default=-1, type=int, help='view size of agents (0 takes env default)')
     parser.add_argument('--save', default=None, type=str, help='save directory name')
     parser.add_argument('--cpu-only', default=False, action='store_true', help='prevent gpu usage')
     return parser.parse_args()
@@ -77,7 +79,7 @@ if __name__ == "__main__":
     else:
         args.save_dir = os.path.join(dir_path, f'saves/{args.save}')
 
-    if args.view_size == 0:
+    if args.view_size == -1:
         args.view_size = None
 
     args.env_maker = env_map[args.env]
@@ -98,7 +100,10 @@ if __name__ == "__main__":
         f"\t Vocab size: {args.vocab}\n" +
         f"\t LSTM size: {args.hidden}\n" +
         f"\t View size: {args.view_size}\n" +
-        f"\t Seed: {args.seed}\n")
+        f"\t Seed: {args.seed}\n" +
+        f"\t Env map:")
+
+    logger.debug(single_env.base_map)
 
     logger.info("Creating shared models and optimizers.")
     torch.manual_seed(args.seed)
