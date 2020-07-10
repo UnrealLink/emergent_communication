@@ -56,11 +56,12 @@ class TargetEnv(MapEnv):
         
 
     def spawn_random_apple(self, char='A'):
+        map_with_agents = self.get_map_with_agents()
         spawned = False
         while not(spawned):
             rand_coords = np.array([np.random.randint(1, len(self.world_map) - 1), 
                                     np.random.randint(1, len(self.world_map[0]) - 1)])
-            if self.world_map[rand_coords[0]][rand_coords[1]] == ' ':
+            if map_with_agents[rand_coords[0]][rand_coords[1]] == ' ':
                 self.update_map([(rand_coords[0], rand_coords[1], char)])
                 spawned = True
         

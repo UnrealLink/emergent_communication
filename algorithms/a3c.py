@@ -292,7 +292,7 @@ def train(shared_models, shared_optimizers, rank, args, info):
 
             if args.render:
                 env.render()
-                # time.sleep(0.5)
+                time.sleep(0.5)
 
             states = {
                 agent_name: preprocess_obs(ob, device=device)
