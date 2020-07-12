@@ -126,11 +126,10 @@ if __name__ == "__main__":
             f'agent-{i}': SharedAdam(shared_models[f'agent-{i}'].parameters(), lr=args.lr)
             for i in range(args.agents)
         }
-    # shared_schedulers = {
-    #     f'agent-{i}': torch.optim.lr_scheduler.StepLR(shared_optimizers[f'agent-{i}'],
-    #                                                   step_size=32, gamma=0.1)
-    #     for i in range(args.agents)
-    # }
+    shared_schedulers = {
+        f'agent-{i}': torch.optim.lr_scheduler.MultiplicativeLR(shared_optimizers[f'agent-{i}'], 0.99)
+        for i in range(args.agents)
+    }
 
     info = {
         info_name: torch.DoubleTensor([0]).share_memory_() 
@@ -149,7 +148,7 @@ if __name__ == "__main__":
     logger.info("Launching processes...")
     processes = []
     for rank in range(args.processes):
-        p = mp.Process(target=train, args=(shared_models, shared_optimizers, rank, args, info))
+        p = mp.Process(target=train, args=(shared_models, shared_optimizers, shared_schedulers, rank, args, info))
         p.start()
         processes.append(p)
     for p in processes:

@@ -156,7 +156,7 @@ def cost_func(args, values, logps, actions, rewards, device):
     return policy_loss + 0.5 * value_loss - 0.01 * entropy_loss
 
 
-def train(shared_models, shared_optimizers, rank, args, info):
+def train(shared_models, shared_optimizers, shared_schedulers, rank, args, info):
     """
     A3C worker training function
     """
@@ -392,7 +392,7 @@ def train(shared_models, shared_optimizers, rank, args, info):
                     shared_param._grad = param.grad  # sync gradients with shared model
             shared_optimizers[agent_name].step()
             shared_optimizers[agent_name].zero_grad()
-            # shared_schedulers[agent_name].step()
+            shared_schedulers[agent_name].step()
 
 
 # Utils
