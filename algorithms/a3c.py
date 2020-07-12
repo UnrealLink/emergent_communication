@@ -331,7 +331,7 @@ def train(shared_models, shared_optimizers, shared_schedulers, rank, args, info)
                             f"episodes {info['episodes'].item():.0f}, " +
                             f"frames {num_frames/1e6:.2f}M, " +
                             f"throughput {(num_frames - start_frames)/(time.time()-start_time):.2f}f/s, " +
-                            f"mean epr {info['run_epr'].item()/(info['episodes'].item()-last_nb_ep):.2f}, ")
+                            f"mean epr {info['run_epr'].item()/max(info['episodes'].item()-last_nb_ep, 1):.2f}, ")
                 print(info['episodes'].item()-last_nb_ep)
                 last_disp_time = time.time()
                 last_nb_ep = info['episodes'].item()
