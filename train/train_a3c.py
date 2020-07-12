@@ -127,7 +127,7 @@ if __name__ == "__main__":
             for i in range(args.agents)
         }
     shared_schedulers = {
-        f'agent-{i}': torch.optim.lr_scheduler.MultiplicativeLR(shared_optimizers[f'agent-{i}'], lambda epoch: 0.95)
+        f'agent-{i}': torch.optim.lr_scheduler.StepLR(shared_optimizers[f'agent-{i}'], 1, 0.95)
         for i in range(args.agents)
     }
 
