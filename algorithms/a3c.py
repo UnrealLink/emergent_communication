@@ -253,6 +253,19 @@ def train(shared_models, shared_optimizers, shared_schedulers, rank, args, info)
             episode_length += 1
             actions = {}
             if args.communication:
+                # overide messages for one agent
+                agent = env.agents['agent-0']
+                i,j = np.where(env.world_map == 'A')
+                if len(i) == 0:
+                    messages['agent-0'] = 0
+                elif i > agent.pos[0]:
+                    messages['agent-0'] = 1
+                elif i < agent.pos[0]:
+                    messages['agent-0'] = 2
+                elif j < agent.pos[0]:
+                    messages['agent-0'] = 3
+                elif j > agent.pos[0]:
+                    messages['agent-0'] = 4
                 flat_messages = preprocess_messages(messages, args.vocab, device=device)
             for agent_name, model in models.items():
                 if args.communication:
@@ -332,7 +345,6 @@ def train(shared_models, shared_optimizers, shared_schedulers, rank, args, info)
                             f"frames {num_frames/1e6:.2f}M, " +
                             f"throughput {(num_frames - start_frames)/(time.time()-start_time):.2f}f/s, " +
                             f"mean epr {info['run_epr'].item()/max(info['episodes'].item()-last_nb_ep, 1):.2f}, ")
-                print(info['episodes'].item()-last_nb_ep)
                 last_disp_time = time.time()
                 last_nb_ep = info['episodes'].item()
                 info['run_epr'].add_(-info['run_epr'].item())
