@@ -49,6 +49,7 @@ class A3CPolicy(nn.Module):
         visual = F.relu(self.conv3(visual))
         if self.communication:
             full_input = torch.cat((visual.view(-1, 128), messages), 1)
+            print(np.max(full_input.cpu().detach().numpy()))
             hx = self.gru(full_input, (hx))
             value = self.critic_head(hx)
             logp = F.log_softmax(self.actor_head(hx), dim=-1)
