@@ -49,7 +49,6 @@ class A3CPolicy(nn.Module):
         visual = F.relu(self.conv3(visual))
         if self.communication:
             full_input = torch.cat((visual.view(-1, 128), messages), 1)
-            print(np.max(full_input.cpu().detach().numpy()))
             hx = self.gru(full_input, (hx))
             value = self.critic_head(hx)
             logp = F.log_softmax(self.actor_head(hx), dim=-1)
@@ -427,7 +426,7 @@ def preprocess_messages(messages, vocab_size, device):
     """
     indices = np.array([message for message in messages.values()]).flatten()
     one_hot = np.zeros((indices.size, vocab_size)).astype('float32')
-    one_hot[np.arange(indices.size), indices] = 1
+    one_hot[np.arange(indices.size), indices] = 10
     one_hot = one_hot.flatten()
     processed_messages = torch.from_numpy(one_hot)
     processed_messages = processed_messages.unsqueeze(0)
