@@ -283,7 +283,6 @@ def train(shared_models, shared_optimizers, shared_schedulers, rank, args, info)
                 else:
                     action = torch.exp(logp).multinomial(num_samples=1).data[0]
                     actions[agent_name] = action.cpu().numpy()[0]
-                print(action)
 
                 values_hist[agent_name].append(value)
                 logps_hist[agent_name].append(logp)
