@@ -331,6 +331,9 @@ class TreasureAgent(Agent):
 
 
 TARGET_ACTIONS = BASE_ACTIONS.copy()
+TARGET_ACTIONS.pop(5)
+TARGET_ACTIONS.pop(6)
+
 
 TARGET_VIEW_SIZE = 5
 
@@ -347,7 +350,7 @@ class TargetAgent(Agent):
 
     @property
     def action_space(self):
-        return Discrete(7)
+        return Discrete(len(TARGET_ACTIONS))
 
     # Ugh, this is gross, this leads to the actions basically being
     # defined in two places
