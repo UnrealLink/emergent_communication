@@ -1,7 +1,7 @@
 #!/bin/bash
 #
-#SBATCH --job-name=
-#SBATCH --output=outputs/.txt
+#SBATCH --job-name=target0
+#SBATCH --output=outputs/target0.txt
 #SBATCH --chdir=/gpfs/home/vvillecroze/emergent_communication
 #
 #SBATCH --ntasks=1

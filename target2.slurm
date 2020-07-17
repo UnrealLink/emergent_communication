@@ -1,7 +1,7 @@
 #!/bin/bash
 #
-#SBATCH --job-name=
-#SBATCH --output=outputs/.txt
+#SBATCH --job-name=target2
+#SBATCH --output=outputs/target2.txt
 #SBATCH --chdir=/gpfs/home/vvillecroze/emergent_communication
 #
 #SBATCH --ntasks=1
@@ -24,23 +24,23 @@ echo "#############################"
 #############################
 
 gpfs/home/vvillecroze/miniconda3/envs/custom_ssd/bin/python train/train_a3c.py --env target \
-    --save new_target_view_0_noise_0_$SLURM_ARRAY_TASK_ID --view-size 0 --communication \
+    --save new_target_view_2_noise_0_$SLURM_ARRAY_TASK_ID --view-size 2 --communication \
     --seed $SLURM_ARRAY_TASK_ID --horizon 20000000 --cpu--only --noise 0
  
 gpfs/home/vvillecroze/miniconda3/envs/custom_ssd/bin/python train/train_a3c.py --env target \
-    --save new_target_view_0_noise_3_$SLURM_ARRAY_TASK_ID --view-size 0 --communication \
+    --save new_target_view_2_noise_3_$SLURM_ARRAY_TASK_ID --view-size 2 --communication \
     --seed $SLURM_ARRAY_TASK_ID --horizon 20000000 --cpu--only --noise 0.3
 
 gpfs/home/vvillecroze/miniconda3/envs/custom_ssd/bin/python train/train_a3c.py --env target \
-    --save new_target_view_0_noise_5_$SLURM_ARRAY_TASK_ID --view-size 0 --communication \
+    --save new_target_view_2_noise_5_$SLURM_ARRAY_TASK_ID --view-size 2 --communication \
     --seed $SLURM_ARRAY_TASK_ID --horizon 20000000 --cpu--only --noise 0.5
 
 gpfs/home/vvillecroze/miniconda3/envs/custom_ssd/bin/python train/train_a3c.py --env target \
-    --save new_target_view_0_noise_7_$SLURM_ARRAY_TASK_ID --view-size 0 --communication \
+    --save new_target_view_2_noise_7_$SLURM_ARRAY_TASK_ID --view-size 2 --communication \
     --seed $SLURM_ARRAY_TASK_ID --horizon 20000000 --cpu--only --noise 0.7
 
 gpfs/home/vvillecroze/miniconda3/envs/custom_ssd/bin/python train/train_a3c.py --env target \
-    --save new_target_view_0_noise_9_$SLURM_ARRAY_TASK_ID --view-size 0 --communication \
+    --save new_target_view_2_noise_9_$SLURM_ARRAY_TASK_ID --view-size 2 --communication \
     --seed $SLURM_ARRAY_TASK_ID --horizon 20000000 --cpu--only --noise 0.9
 
 echo "Job finished"
