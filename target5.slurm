@@ -23,24 +23,24 @@ echo "#############################"
 
 #############################
 
-gpfs/home/vvillecroze/miniconda3/envs/custom_ssd/bin/python train/train_a3c.py --env target \
+/gpfs/home/vvillecroze/miniconda3/envs/custom_ssd/bin/python train/train_a3c.py --env target \
     --save new_target_view_5_noise_0_$SLURM_ARRAY_TASK_ID --view-size 5 --communication \
-    --seed $SLURM_ARRAY_TASK_ID --horizon 20000000 --cpu--only --noise 0
+    --seed $SLURM_ARRAY_TASK_ID --horizon 20000000 --cpu-only --noise 0
  
-gpfs/home/vvillecroze/miniconda3/envs/custom_ssd/bin/python train/train_a3c.py --env target \
+/gpfs/home/vvillecroze/miniconda3/envs/custom_ssd/bin/python train/train_a3c.py --env target \
     --save new_target_view_5_noise_3_$SLURM_ARRAY_TASK_ID --view-size 5 --communication \
-    --seed $SLURM_ARRAY_TASK_ID --horizon 20000000 --cpu--only --noise 0.3
+    --seed $SLURM_ARRAY_TASK_ID --horizon 20000000 --cpu-only --noise 0.3
 
-gpfs/home/vvillecroze/miniconda3/envs/custom_ssd/bin/python train/train_a3c.py --env target \
+/gpfs/home/vvillecroze/miniconda3/envs/custom_ssd/bin/python train/train_a3c.py --env target \
     --save new_target_view_5_noise_5_$SLURM_ARRAY_TASK_ID --view-size 5 --communication \
-    --seed $SLURM_ARRAY_TASK_ID --horizon 20000000 --cpu--only --noise 0.5
+    --seed $SLURM_ARRAY_TASK_ID --horizon 20000000 --cpu-only --noise 0.5
 
-gpfs/home/vvillecroze/miniconda3/envs/custom_ssd/bin/python train/train_a3c.py --env target \
+/gpfs/home/vvillecroze/miniconda3/envs/custom_ssd/bin/python train/train_a3c.py --env target \
     --save new_target_view_5_noise_7_$SLURM_ARRAY_TASK_ID --view-size 5 --communication \
-    --seed $SLURM_ARRAY_TASK_ID --horizon 20000000 --cpu--only --noise 0.7
+    --seed $SLURM_ARRAY_TASK_ID --horizon 20000000 --cpu-only --noise 0.7
 
-gpfs/home/vvillecroze/miniconda3/envs/custom_ssd/bin/python train/train_a3c.py --env target \
+/gpfs/home/vvillecroze/miniconda3/envs/custom_ssd/bin/python train/train_a3c.py --env target \
     --save new_target_view_5_noise_9_$SLURM_ARRAY_TASK_ID --view-size 5 --communication \
-    --seed $SLURM_ARRAY_TASK_ID --horizon 20000000 --cpu--only --noise 0.9
+    --seed $SLURM_ARRAY_TASK_ID --horizon 20000000 --cpu-only --noise 0.9
 
 echo "Job finished"
