@@ -52,16 +52,14 @@ class TargetEnv(MapEnv):
         if self.agents['agent-0'].consumed:
             self.agents['agent-0'].consumed = False
             self.agents['agent-0'].reward_this_turn += 1
-            if self.num_agents == 2:
-                self.agents['agent-1'].reward_this_turn += 1
             self.spawn_random_apple()
-        
+
 
     def spawn_random_apple(self, char='A'):
         map_with_agents = self.get_map_with_agents()
         spawned = False
-        while not(spawned):
-            rand_coords = np.array([np.random.randint(1, len(self.world_map) - 1), 
+        while not spawned:
+            rand_coords = np.array([np.random.randint(1, len(self.world_map) - 1),
                                     np.random.randint(1, len(self.world_map[0]) - 1)])
             if map_with_agents[rand_coords[0]][rand_coords[1]] == ' ':
                 self.update_map([(rand_coords[0], rand_coords[1], char)])

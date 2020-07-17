@@ -31,36 +31,27 @@ class A3CPolicy(nn.Module):
         self.conv1 = nn.Conv2d(channels, 32, 3, stride=2, padding=1)
         self.conv2 = nn.Conv2d(32, 32, 3, stride=2, padding=1)
         self.conv3 = nn.Conv2d(32, 32, 3, stride=2, padding=1)
-        self.gru = nn.GRUCell(128 + vocab_size * n_agents, memsize)
+        self.hidden = nn.Linear(128 + vocab_size * n_agents, memsize)
         self.critic_head = nn.Linear(memsize, 1)
         self.actor_head = nn.Linear(memsize, num_actions)
-        if self.communication:
-            self.comm_critic_head = nn.Linear(memsize, 1)
-            self.comm_actor_head = nn.Linear(memsize, vocab_size)
 
     # pylint: disable=arguments-differ
     def forward(self, inputs):
         if self.communication:
-            visual, messages, hx = inputs
+            visual, messages = inputs
         else:
-            visual, hx = inputs
+            visual = inputs
         visual = F.relu(self.conv1(visual))
         visual = F.relu(self.conv2(visual))
         visual = F.relu(self.conv3(visual))
         if self.communication:
             full_input = torch.cat((visual.view(-1, 128), messages), 1)
-            hx = self.gru(full_input, (hx))
-            value = self.critic_head(hx)
-            logp = F.log_softmax(self.actor_head(hx), dim=-1)
-            comm_value = self.critic_head(hx)
-            comm_logp = F.log_softmax(self.comm_actor_head(hx), dim=-1)
-            return (value, logp, comm_value, comm_logp, hx)
         else:
             full_input = visual.view(-1, 128)
-            hx = self.gru(full_input, (hx))
-            value = self.critic_head(hx)
-            logp = F.log_softmax(self.actor_head(hx), dim=-1)
-            return value, logp, hx
+        hidden = self.hidden(full_input)
+        value = self.critic_head(hidden)
+        logp = F.log_softmax(self.actor_head(hidden), dim=-1)
+        return value, logp
 
     def try_load(self, save_dir, agent_name, logger=None):
         """
@@ -187,14 +178,6 @@ def train(shared_models, shared_optimizers, shared_schedulers, rank, args, info)
         agent_name: preprocess_obs(ob, device=device)
         for agent_name, ob in obs.items()
     }  # get first state
-    hxs = {
-        f'agent-{i}': None
-        for i in range(args.agents)
-    }
-    messages = {
-        f'agent-{i}': 0
-        for i in range(args.agents)
-    }
 
     start_time = last_disp_time = time.time()
     episode_length, epr, eploss, last_nb_ep = 0, 0, 0, 0  # bookkeeping
@@ -208,13 +191,6 @@ def train(shared_models, shared_optimizers, shared_schedulers, rank, args, info)
         for agent_name, model in models.items():
             # sync with shared model
             model.load_state_dict(shared_models[agent_name].state_dict())
-
-        hxs = {
-            # rnn activation vector
-            agent_name: torch.zeros(
-                1, args.hidden).to(device) if dones[agent_name] else hx.detach()
-            for agent_name, hx in hxs.items()
-        }
 
         # save values for computing gradients
         values_hist = {
@@ -230,20 +206,6 @@ def train(shared_models, shared_optimizers, shared_schedulers, rank, args, info)
             for i in range(args.agents)
         }
 
-        if args.communication:
-            comm_values_hist = {
-                f'agent-{i}': []
-                for i in range(args.agents)
-            }
-            comm_logps_hist = {
-                f'agent-{i}': []
-                for i in range(args.agents)
-            }
-            comm_messages_hist = {
-                f'agent-{i}': []
-                for i in range(args.agents)
-            }
-
         rewards_hist = {
             f'agent-{i}': []
             for i in range(args.agents)
@@ -252,29 +214,15 @@ def train(shared_models, shared_optimizers, shared_schedulers, rank, args, info)
         for _ in range(args.rnn_steps):
             episode_length += 1
             actions = {}
+            messages = {}
             if args.communication:
-                # # overide messages for one agent
-                # agent = env.agents['agent-0']
-                # i,j = np.where(env.world_map == 'A')
-                # if len(i) == 0:
-                #     messages['agent-0'] = 0
-                # elif i > agent.pos[0]:
-                #     messages['agent-0'] = 1
-                # elif i < agent.pos[0]:
-                #     messages['agent-0'] = 2
-                # elif j < agent.pos[0]:
-                #     messages['agent-0'] = 3
-                # elif j > agent.pos[0]:
-                #     messages['agent-0'] = 4
+                get_comm(env, messages, args.noise)
                 flat_messages = preprocess_messages(messages, args.vocab, device=device)
             for agent_name, model in models.items():
                 if args.communication:
-                    value, logp, comm_value, comm_logp, hx = model((states[agent_name],
-                                                                    flat_messages,
-                                                                    hxs[agent_name]))
+                    value, logp = model((states[agent_name], flat_messages))
                 else:
-                    value, logp, hx = model((states[agent_name], hxs[agent_name]))
-                hxs[agent_name] = hx # update lstm state
+                    value, logp = model((states[agent_name]))
 
                 # select action
                 if args.test:
@@ -287,19 +235,6 @@ def train(shared_models, shared_optimizers, shared_schedulers, rank, args, info)
                 values_hist[agent_name].append(value)
                 logps_hist[agent_name].append(logp)
                 actions_hist[agent_name].append(action)
-
-                if args.communication:
-                    if args.test:
-                        message = torch.argmax(comm_logp).unsqueeze(0).data
-                        messages[agent_name] = int(message.cpu().numpy()[0])
-                        # if agent_name == 'agent-1': print(message)
-                    else:
-                        message = torch.exp(comm_logp).multinomial(num_samples=1).data[0]
-                        messages[agent_name] = message.cpu().numpy()[0]
-
-                    comm_values_hist[agent_name].append(comm_value)
-                    comm_logps_hist[agent_name].append(comm_logp)
-                    comm_messages_hist[agent_name].append(message)
 
             obs, rewards, dones, _ = env.step(actions)
 
@@ -356,24 +291,16 @@ def train(shared_models, shared_optimizers, shared_schedulers, rank, args, info)
                     agent_name: preprocess_obs(ob, device=device)
                     for agent_name, ob in obs.items()
                 }
-                messages = {
-                    f'agent-{i}': 0
-                    for i in range(args.agents)
-                }
 
         for agent_name, model in models.items():
             if dones[agent_name]:
                 next_value = torch.zeros(1, 1).to(device)
-                if args.communication:
-                    next_comm_value = torch.zeros(1, 1).to(device)
             else:
                 if args.communication:
                     flat_messages = preprocess_messages(messages, args.vocab, device=device)
-                    next_value, _, next_comm_value, _, _ = model((states[agent_name],
-                                                                  flat_messages,
-                                                                  hxs[agent_name]))
+                    next_value, _ = model((states[agent_name], flat_messages))
                 else:
-                    next_value = model((states[agent_name], hxs[agent_name]))[0]
+                    next_value = model((states[agent_name]))[0]
 
             values_hist[agent_name].append(next_value.detach())
             loss = cost_func(args,
@@ -383,18 +310,6 @@ def train(shared_models, shared_optimizers, shared_schedulers, rank, args, info)
                              np.asarray(rewards_hist[agent_name]),
                              device=device)
             eploss += loss.item()
-
-            if args.communication:
-                comm_values_hist[agent_name].append(next_comm_value)
-                comm_loss = cost_func(args,
-                                      torch.cat(comm_values_hist[agent_name]),
-                                      torch.cat(comm_logps_hist[agent_name]),
-                                      torch.cat(comm_messages_hist[agent_name]),
-                                      np.asarray(rewards_hist[agent_name]),
-                                      device=device)
-
-            if args.communication:
-                comm_loss.backward(retain_graph=True)
             loss.backward()
             torch.nn.utils.clip_grad_norm_(models[agent_name].parameters(), 40)
 
@@ -426,7 +341,7 @@ def preprocess_messages(messages, vocab_size, device):
     """
     indices = np.array([message for message in messages.values()]).flatten()
     one_hot = np.zeros((indices.size, vocab_size)).astype('float32')
-    one_hot[np.arange(indices.size), indices] = 10
+    one_hot[np.arange(indices.size), indices] = 1
     one_hot = one_hot.flatten()
     processed_messages = torch.from_numpy(one_hot)
     processed_messages = processed_messages.unsqueeze(0)
@@ -437,3 +352,23 @@ def discount(x, gamma):
     discount rewards with a gamma rate.
     """
     return lfilter([1], [1, -gamma], x[::-1])[::-1]
+
+def get_comm(env, messages, noise=0.):
+    if np.random.random() < noise:
+        for agent_name, agent in env.agents.items():
+            messages[agent_name] = np.random.randint(1, 5)
+    else:
+        i, j = np.where(env.world_map == 'A')
+        for agent_name, agent in env.agents.items():
+            if len(i) == 0:
+                messages[agent_name] = 0
+            elif i > agent.pos[0]:
+                messages[agent_name] = 1
+            elif i < agent.pos[0]:
+                messages[agent_name] = 2
+            elif j < agent.pos[1]:
+                messages[agent_name] = 3
+            elif j > agent.pos[1]:
+                messages[agent_name] = 4
+            else:
+                messages[agent_name] = 0

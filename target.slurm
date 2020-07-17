@@ -1,8 +1,8 @@
 #!/bin/bash
 #
-#SBATCH --job-name=target_no_view
-#SBATCH --output=target_no_view.txt
-# SBATCH --chdir=/gpfs/home/vvillecroze/emergent_communication
+#SBATCH --job-name=
+#SBATCH --output=outputs/.txt
+#SBATCH --chdir=/gpfs/home/vvillecroze/emergent_communication
 #
 #SBATCH --ntasks=1
 #SBATCH --time=36:00:00
@@ -23,8 +23,8 @@ echo "#############################"
 
 #############################
 
-gpfs/home/vvillecroze/miniconda3/envs/custom_ssd/bin/python train/train_a3c.py --env target --lr 0.00001 --agents 2 \
-    --save target_easy$SLURM_ARRAY_TASK_ID --processes 16 --view-size 0 --hidden 64 --communication --seed $SLURM_ARRAY_TASK_ID \
-    --horizon 20000000 --cpu--only
+gpfs/home/vvillecroze/miniconda3/envs/custom_ssd/bin/python train/train_a3c.py --env target \
+    --save target_easy$SLURM_ARRAY_TASK_ID --view-size 0 --communication --seed $SLURM_ARRAY_TASK_ID \
+    --horizon 20000000 --cpu--only --noise 0
  
 echo "Job finished"

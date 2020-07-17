@@ -20,7 +20,7 @@ from social_dilemmas.envs.target import TargetEnv
 
 import utils.utility_funcs as utility_funcs
 
-from algorithms.a3c import A3CPolicy, preprocess_messages, preprocess_obs
+from algorithms.a3c import A3CPolicy, preprocess_messages, preprocess_obs, get_comm
 
 env_map = {
     'finder': FinderEnv,
@@ -92,12 +92,7 @@ if __name__ == "__main__":
             logger.warning("No trained models found.")
 
     # Matrices for tracking messages/actions co-occurences
-    SC1 = np.zeros((args.vocab, args.num_actions))
-    SC2 = np.zeros((args.vocab, args.num_actions))
-    SC = [SC1, SC2]
-    IC1 = np.zeros((args.vocab, args.num_actions))
-    IC2 = np.zeros((args.vocab, args.num_actions))
-    IC = [IC1, IC2]
+    IC = np.zeros((args.vocab, args.num_actions))
     A = np.zeros(args.num_actions)
     M = np.zeros(args.vocab)
 
@@ -106,10 +101,6 @@ if __name__ == "__main__":
     states = {
         agent_name: preprocess_obs(ob, device=device)
         for agent_name, ob in obs.items()
-    }
-    hxs = {
-        agent_name: torch.zeros(1, args.hidden).to(device)
-        for agent_name in models.keys()
     }
     messages = {
         agent_name: 0
@@ -120,26 +111,20 @@ if __name__ == "__main__":
 
     for _ in range(args.horizon):
         actions = {}
+        messages = {}
+        get_comm(env, messages)
         flat_messages = preprocess_messages(messages, args.vocab, device=device)
         for agent_name, model in models.items():
-            value, logp, comm_value, comm_logp, hx = model((states[agent_name],
-                                                            flat_messages,
-                                                            hxs[agent_name]))
-            hxs[agent_name] = hx
+            value, logp = model((states[agent_name], flat_messages))
 
             #TODO Should change to max
             action = torch.argmax(logp).data
             actions[agent_name] = int(action.cpu().numpy())
 
-            message = torch.argmax(comm_logp).data
-            messages[agent_name] = int(message.cpu().numpy())
-
         # Update measures here
-        for i in range(2):
-            SC[i][messages[f"agent-{i}"]][actions[f"agent-{i}"]] += 1
-            IC[i][messages[f"agent-{i}"]][actions[f"agent-{1-i}"]] += 1
-        A[actions['agent-1']] += 1
-        M[messages['agent-1']] += 1
+        IC[messages[f"agent-0"]][actions[f"agent-0"]] += 1
+        A[actions['agent-0']] += 1
+        M[messages['agent-0']] += 1
 
         obs, rewards, dones, _ = env.step(actions)
 
@@ -164,10 +149,6 @@ if __name__ == "__main__":
                 agent_name: preprocess_obs(ob, device=device)
                 for agent_name, ob in obs.items()
             }
-            hxs = {
-                agent_name: torch.zeros(1, args.hidden).to(device)
-                for agent_name in models.keys()
-            }
             messages = {
                 agent_name: 0
                 for agent_name in models.keys()
@@ -176,19 +157,11 @@ if __name__ == "__main__":
     logger.info("Rollout done.")
     logger.info("Computing measures")
 
-    sc1, sc2, ic1, ic2 = 0, 0, 0, 0
-
-    print(SC1)
-    print(SC2)
-    print(IC1)
-    print(IC2)
-
+    ic = 0
     for m in range(args.vocab):
         for a in range(args.num_actions):
-            sc1 += 0 if SC1[m, a] == 0 else SC1[m, a]/args.horizon * np.log(SC1[m, a]/(np.sum(SC1[m, :])*np.sum(SC1[:, a])/args.horizon))
-            sc2 += 0 if SC2[m, a] == 0 else SC2[m, a]/args.horizon * np.log(SC2[m, a]/(np.sum(SC2[m, :])*np.sum(SC2[:, a])/args.horizon))
-            ic1 += 0 if IC1[m, a] == 0 else IC1[m, a]/args.horizon * np.log(IC1[m, a]/(np.sum(IC1[m, :])*np.sum(IC1[:, a])/args.horizon))
-            ic2 += 0 if IC2[m, a] == 0 else IC2[m, a]/args.horizon * np.log(IC2[m, a]/(np.sum(IC2[m, :])*np.sum(IC2[:, a])/args.horizon))
-    logger.info(f"SC1: {sc1}, SC2: {sc2}, IC1: {ic1}, IC2: {ic2}")
+            ic += 0 if IC[m, a] == 0 else IC[m, a]/args.horizon * np.log(IC[m, a]/(np.sum(IC[m, :])*np.sum(IC[:, a])/args.horizon))
+    logger.info(f"IC: {ic}")
+    print(IC)
     print(A)
     print(M)
