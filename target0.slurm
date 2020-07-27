@@ -8,7 +8,7 @@
 #SBATCH --time=36:00:00
 #SBATCH --cpus-per-task=16
 #
-#SBATCH --array=0-4
+#SBATCH --array=0-9
 
 # useful informations to print
 echo "#############################" 
@@ -23,14 +23,14 @@ echo "#############################"
 
 #############################
 
-/gpfs/home/vvillecroze/miniconda3/envs/custom_ssd/bin/python train/train_a3c.py --env target --save new_target_view_0_noise_0_$SLURM_ARRAY_TASK_ID --view-size 0 --communication --seed $SLURM_ARRAY_TASK_ID --horizon 20000000 --cpu-only --noise 0
+/gpfs/home/vvillecroze/miniconda3/envs/custom_ssd/bin/python train/train_a3c.py --env target --save new_target_bis_view_0_noise_0_$SLURM_ARRAY_TASK_ID --view-size 0 --communication --seed $SLURM_ARRAY_TASK_ID --horizon 3000000 --cpu-only --noise 0
  
-/gpfs/home/vvillecroze/miniconda3/envs/custom_ssd/bin/python train/train_a3c.py --env target --save new_target_view_0_noise_3_$SLURM_ARRAY_TASK_ID --view-size 0 --communication --seed $SLURM_ARRAY_TASK_ID --horizon 20000000 --cpu-only --noise 0.3
+/gpfs/home/vvillecroze/miniconda3/envs/custom_ssd/bin/python train/train_a3c.py --env target --save new_target_bis_view_0_noise_3_$SLURM_ARRAY_TASK_ID --view-size 0 --communication --seed $SLURM_ARRAY_TASK_ID --horizon 3000000 --cpu-only --noise 0.3
 
-/gpfs/home/vvillecroze/miniconda3/envs/custom_ssd/bin/python train/train_a3c.py --env target --save new_target_view_0_noise_5_$SLURM_ARRAY_TASK_ID --view-size 0 --communication --seed $SLURM_ARRAY_TASK_ID --horizon 20000000 --cpu-only --noise 0.5
+/gpfs/home/vvillecroze/miniconda3/envs/custom_ssd/bin/python train/train_a3c.py --env target --save new_target_bis_view_0_noise_5_$SLURM_ARRAY_TASK_ID --view-size 0 --communication --seed $SLURM_ARRAY_TASK_ID --horizon 3000000 --cpu-only --noise 0.5
 
-/gpfs/home/vvillecroze/miniconda3/envs/custom_ssd/bin/python train/train_a3c.py --env target --save new_target_view_0_noise_7_$SLURM_ARRAY_TASK_ID --view-size 0 --communication --seed $SLURM_ARRAY_TASK_ID --horizon 20000000 --cpu-only --noise 0.7
+/gpfs/home/vvillecroze/miniconda3/envs/custom_ssd/bin/python train/train_a3c.py --env target --save new_target_bis_view_0_noise_7_$SLURM_ARRAY_TASK_ID --view-size 0 --communication --seed $SLURM_ARRAY_TASK_ID --horizon 3000000 --cpu-only --noise 0.7
 
-/gpfs/home/vvillecroze/miniconda3/envs/custom_ssd/bin/python train/train_a3c.py --env target --save new_target_view_0_noise_9_$SLURM_ARRAY_TASK_ID --view-size 0 --communication --seed $SLURM_ARRAY_TASK_ID --horizon 20000000 --cpu-only --noise 0.9
+/gpfs/home/vvillecroze/miniconda3/envs/custom_ssd/bin/python train/train_a3c.py --env target --save new_target_bis_view_0_noise_9_$SLURM_ARRAY_TASK_ID --view-size 0 --communication --seed $SLURM_ARRAY_TASK_ID --horizon 3000000 --cpu-only --noise 0.9
 
 echo "Job finished"

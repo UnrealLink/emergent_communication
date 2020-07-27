@@ -180,6 +180,7 @@ def train(shared_models, shared_optimizers, shared_schedulers, rank, args, info)
     }  # get first state
 
     start_time = last_disp_time = time.time()
+    start_frames = last_disp_frame = int(info["start_frames"].item())
     episode_length, epr, eploss, last_nb_ep = 0, 0, 0, 0  # bookkeeping
     dones = {
         f'agent-{i}': True
@@ -271,8 +272,9 @@ def train(shared_models, shared_optimizers, shared_schedulers, rank, args, info)
                 info['episodes'] += 1
                 info['run_epr'].add_(epr)
 
-            if rank == 0 and time.time() - last_disp_time > 60:  # print info ~ every minute
-                start_frames = int(info["start_frames"].item())
+            # if rank == 0 and time.time() - last_disp_time > 60:  # print info ~ every minute
+            if rank == 0 and num_frames - last_disp_frame > 10000:  # print info ~ every 10 000 frames
+                last_disp_frame = num_frames
                 elapsed = time.strftime(
                     "%Hh %Mm %Ss", time.gmtime(time.time() - start_time))
                 logger.info(f"time {elapsed}, " +
