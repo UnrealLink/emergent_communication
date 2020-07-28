@@ -66,9 +66,9 @@ class A3CPolicy(nn.Module):
             self.load_state_dict(torch.load(paths[index]))
         if logger is not None:
             if step == 0:
-                logger.info("\tno saved models")
+                logger.debug("\tno saved models")
             else:
-                logger.info("\tloaded model: {}".format(paths[index]))
+                logger.debug("\tloaded model: {}".format(paths[index]))
         return step
 
 

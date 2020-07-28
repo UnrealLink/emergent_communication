@@ -72,7 +72,7 @@ if __name__ == "__main__":
     logger = logging.getLogger('Measure')
     utility_funcs.setup_logger(logger, args)
 
-    logger.info("Loading env and agents...")
+    logger.debug("Loading env and agents...")
     env = env_map[args.env](num_agents=args.agents, seed=args.seed, view_size=args.view_size)
     torch.manual_seed(args.seed)
     args.num_actions = env.action_space.n
@@ -96,7 +96,7 @@ if __name__ == "__main__":
     A = np.zeros(args.num_actions)
     M = np.zeros(args.vocab)
 
-    logger.info("Starting rollout...")
+    logger.debug("Starting rollout...")
     obs = env.reset()
     states = {
         agent_name: preprocess_obs(ob, device=device)
@@ -117,7 +117,6 @@ if __name__ == "__main__":
         for agent_name, model in models.items():
             value, logp = model((states[agent_name], flat_messages))
 
-            #TODO Should change to max
             action = torch.argmax(logp).data
             actions[agent_name] = int(action.cpu().numpy())
 
@@ -158,14 +157,14 @@ if __name__ == "__main__":
                 for agent_name in models.keys()
             }
 
-    logger.info("Rollout done.")
-    logger.info("Computing measures")
+    logger.debug("Rollout done.")
+    logger.debug("Computing measures")
 
     ic = 0
     for m in range(args.vocab):
         for a in range(args.num_actions):
             ic += 0 if IC[m, a] == 0 else IC[m, a]/args.horizon * np.log(IC[m, a]/(np.sum(IC[m, :])*np.sum(IC[:, a])/args.horizon))
     logger.info(f"IC: {ic}")
-    print(IC)
-    print(A)
-    print(M)
+    # print(IC)
+    # print(A)
+    # print(M)
