@@ -39,11 +39,13 @@ def get_args():
     parser.add_argument('--agents', default=5, type=int, help='number of agents in environment')
     parser.add_argument('--horizon', default=1000, type=int, help='number of steps to measure on')
     parser.add_argument('--seed', default=1, type=int, help='set random seed')
-    parser.add_argument('--vocab', default=10, type=int, help='vocabulary size for communication')
+    parser.add_argument('--vocab', default=5, type=int, help='vocabulary size for communication')
     parser.add_argument('--view-size', default=0, type=int, help='view size of agents (0 takes env default)')
     parser.add_argument('--hidden', default=128, type=int, help='hidden size of GRU')
+    parser.add_argument('--noise', default=0., type=float, help='noise in comm channel')
     parser.add_argument('--save', default=None, type=str, help='save directory name')
     parser.add_argument('--cpu-only', default=False, action='store_true', help='prevent gpu usage')
+    parser.add_argument('--render', default=False, action='store_true', help='render at each time step')
     return parser.parse_args()
 
 
@@ -71,8 +73,6 @@ if __name__ == "__main__":
     utility_funcs.setup_logger(logger, args)
 
     logger.info("Loading env and agents...")
-    if args.agents > 2:
-        logger.warning("Measures are currently only done on two agents")
     env = env_map[args.env](num_agents=args.agents, seed=args.seed, view_size=args.view_size)
     torch.manual_seed(args.seed)
     args.num_actions = env.action_space.n
@@ -112,7 +112,7 @@ if __name__ == "__main__":
     for _ in range(args.horizon):
         actions = {}
         messages = {}
-        get_comm(env, messages)
+        get_comm(env, messages, args.noise)
         flat_messages = preprocess_messages(messages, args.vocab, device=device)
         for agent_name, model in models.items():
             value, logp = model((states[agent_name], flat_messages))
@@ -132,6 +132,10 @@ if __name__ == "__main__":
             agent_name: preprocess_obs(ob, device=device)
             for agent_name, ob in obs.items()
         }
+
+        if args.render:
+            env.render()
+            time.sleep(0.5)
 
         # fig.clf()
 
