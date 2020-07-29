@@ -34,12 +34,6 @@ class TargetEnv(MapEnv):
             agent0 = TargetAgent('agent-0', spawn_point, rotation, grid, view_len=self.view_size)
         self.agents['agent-0'] = agent0
 
-        if self.num_agents == 2:
-            spawn_point = self.spawn_points[1]
-            rotation = self.spawn_rotation()
-            grid = map_with_agents
-            agent1 = TargetAgent('agent-1', spawn_point, rotation, grid, view_len=np.max(grid.shape)-2)
-            self.agents['agent-1'] = agent1
 
     def custom_reset(self):
         self.spawn_random_apple()

@@ -24,10 +24,8 @@ class A3CPolicy(nn.Module):
     """
     Actor-critic model for A3C algorithm.
     """
-    def __init__(self, channels, memsize, num_actions,
-                 communication=False, vocab_size=0, n_agents=5):
+    def __init__(self, channels, memsize, num_actions, vocab_size=0, n_agents=5):
         super(A3CPolicy, self).__init__()
-        self.communication = communication
         self.conv1 = nn.Conv2d(channels, 32, 3, stride=2, padding=1)
         self.conv2 = nn.Conv2d(32, 32, 3, stride=2, padding=1)
         self.conv3 = nn.Conv2d(32, 32, 3, stride=2, padding=1)
@@ -37,17 +35,11 @@ class A3CPolicy(nn.Module):
 
     # pylint: disable=arguments-differ
     def forward(self, inputs):
-        if self.communication:
-            visual, messages = inputs
-        else:
-            visual = inputs
+        visual, messages = inputs
         visual = F.relu(self.conv1(visual))
         visual = F.relu(self.conv2(visual))
         visual = F.relu(self.conv3(visual))
-        if self.communication:
-            full_input = torch.cat((visual.view(-1, 128), messages), 1)
-        else:
-            full_input = visual.view(-1, 128)
+        full_input = torch.cat((visual.view(-1, 128), messages), 1)
         hidden = self.hidden(full_input)
         value = self.critic_head(hidden)
         logp = F.log_softmax(self.actor_head(hidden), dim=-1)
@@ -84,7 +76,7 @@ class EasySpeakerPolicy(nn.Module):
     # pylint: disable=arguments-differ
     def forward(self, inputs):
         hidden = F.relu(self.hidden_layer(inputs))
-        logp = F.log_softmax(self.actor(hidden))
+        logp = F.log_softmax(self.actor(hidden), dim=-1)
         value = self.critic(hidden)
         return value, logp
 
@@ -200,13 +192,12 @@ def train(shared_models, shared_optimizers, shared_schedulers, rank, args, info)
     env = args.env_maker(num_agents=args.agents, seed=args.seed + rank, view_size=args.view_size)
     torch.manual_seed(args.seed + rank)  # seed everything
     models = {
-        f'agent-{i}': A3CPolicy(channels=3,
-                                memsize=args.hidden,
-                                num_actions=args.num_actions,
-                                communication=args.communication,
-                                vocab_size=args.vocab,
-                                n_agents=args.agents).to(device)
-        for i in range(args.agents)
+        'agent-0': A3CPolicy(channels=3,
+                             memsize=args.hidden,
+                             num_actions=args.num_actions,
+                             vocab_size=args.vocab,
+                             n_agents=args.agents).share_memory().to(device),
+        'agent-1': EasySpeakerPolicy(input=args.vocab, vocab_size=args.vocab).to(device)
     }  # local/unshared models
     obs = env.reset()
     states = {
@@ -230,47 +221,58 @@ def train(shared_models, shared_optimizers, shared_schedulers, rank, args, info)
 
         # save values for computing gradients
         values_hist = {
-            f'agent-{i}': []
-            for i in range(args.agents)
+            'agent-0': [],
+            'agent-1': []
         }
         logps_hist = {
-            f'agent-{i}': []
-            for i in range(args.agents)
+            'agent-0': [],
+            'agent-1': []
         }
         actions_hist = {
-            f'agent-{i}': []
-            for i in range(args.agents)
+            'agent-0': [],
+            'agent-1': []
         }
-
         rewards_hist = {
-            f'agent-{i}': []
-            for i in range(args.agents)
+            'agent-0': [],
+            'agent-1': []
         }
 
         for _ in range(args.rnn_steps):
             episode_length += 1
             actions = {}
             messages = {}
-            if args.communication:
-                get_comm(env, messages, args.noise)
-                flat_messages = preprocess_messages(messages, args.vocab, device=device)
-            for agent_name, model in models.items():
-                if args.communication:
-                    value, logp = model((states[agent_name], flat_messages))
-                else:
-                    value, logp = model((states[agent_name]))
+            get_comm(env, messages, args.noise)
+            perfect_message = preprocess_messages(messages, args.vocab, device=device)
 
-                # select action
-                if args.test:
-                    action = torch.argmax(logp).unsqueeze(0).data
-                    actions[agent_name] = int(action.cpu().numpy()[0])
-                else:
-                    action = torch.exp(logp).multinomial(num_samples=1).data[0]
-                    actions[agent_name] = action.cpu().numpy()[0]
+            # get speaker message
+            comm_value, comm_logp = models['agent-1'](perfect_message)
 
-                values_hist[agent_name].append(value)
-                logps_hist[agent_name].append(logp)
-                actions_hist[agent_name].append(action)
+            if args.test:
+                message = torch.argmax(comm_logp).unsqueeze(0).data
+                messages['agent-0'] = int(message.cpu().numpy()[0])
+            else:
+                message = torch.exp(comm_logp).multinomial(num_samples=1).data[0]
+                messages['agent-0'] = message.cpu().numpy()[0]
+
+            values_hist['agent-1'].append(comm_value)
+            logps_hist['agent-1'].append(comm_logp)
+            actions_hist['agent-1'].append(message)
+
+            real_messages = preprocess_messages(messages, args.vocab, device=device)
+
+            # select listener action
+            value, logp = models['agent-0']((states['agent-0'], real_messages))
+
+            if args.test:
+                action = torch.argmax(logp).unsqueeze(0).data
+                actions['agent-0'] = int(action.cpu().numpy()[0])
+            else:
+                action = torch.exp(logp).multinomial(num_samples=1).data[0]
+                actions['agent-0'] = action.cpu().numpy()[0]
+
+            values_hist['agent-0'].append(value)
+            logps_hist['agent-0'].append(logp)
+            actions_hist['agent-0'].append(action)
 
             obs, rewards, dones, _ = env.step(actions)
 
@@ -283,14 +285,13 @@ def train(shared_models, shared_optimizers, shared_schedulers, rank, args, info)
                 for agent_name, ob in obs.items()
             }
 
-            # epr += rewards['agent-0']
+            rewards['agent-1'] = rewards['agent-0']
+
             epr += np.sum([reward for reward in rewards.values()])
 
             for agent_name, reward in rewards.items():
                 rewards[agent_name] = np.clip(reward, -1, 1)  # clip reward
                 rewards_hist[agent_name].append(rewards[agent_name])
-            # should set done to true once a certain number of timesteps is reached since
-            # one episode shouldn't be played for too long
 
             info['frames'].add_(1)
             num_frames = int(info['frames'].item())
@@ -329,17 +330,29 @@ def train(shared_models, shared_optimizers, shared_schedulers, rank, args, info)
                     for agent_name, ob in obs.items()
                 }
 
-        for agent_name, model in models.items():
-            if dones[agent_name]:
-                next_value = torch.zeros(1, 1).to(device)
-            else:
-                if args.communication:
-                    flat_messages = preprocess_messages(messages, args.vocab, device=device)
-                    next_value, _ = model((states[agent_name], flat_messages))
-                else:
-                    next_value = model((states[agent_name]))[0]
+        if dones["__all__"]:
+            next_value = torch.zeros(1, 1).to(device)
+            values_hist['agent-0'].append(next_value.detach())
+            values_hist['agent-1'].append(next_value.detach())
+        else:
+            get_comm(env, messages, args.noise)
+            perfect_message = preprocess_messages(messages, args.vocab, device=device)
 
-            values_hist[agent_name].append(next_value.detach())
+            # get speaker message
+            comm_value, comm_logp = models['agent-1'](perfect_message)
+
+            message = torch.exp(comm_logp).multinomial(num_samples=1).data[0]
+            messages['agent-0'] = message.cpu().numpy()[0]
+
+            real_messages = preprocess_messages(messages, args.vocab, device=device)
+
+            # select listener action
+            next_value, _ = models['agent-0']((states['agent-0'], real_messages))
+
+            values_hist['agent-1'].append(comm_value.detach())
+            values_hist['agent-0'].append(next_value.detach())
+        
+        for agent_name, model in models.items():
             loss = cost_func(args,
                              torch.cat(values_hist[agent_name]),
                              torch.cat(logps_hist[agent_name]),

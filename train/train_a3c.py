@@ -18,7 +18,7 @@ from social_dilemmas.envs.finder import FinderEnv
 from social_dilemmas.envs.treasure import TreasureEnv
 from social_dilemmas.envs.target import TargetEnv
 
-from algorithms.a3c import A3CPolicy, SharedAdam, SharedRMSprop, train
+from algorithms.a3c import A3CPolicy, EasySpeakerPolicy, SharedAdam, SharedRMSprop, train
 
 os.environ['OMP_NUM_THREADS'] = '1'
 
@@ -49,7 +49,6 @@ def get_args():
     parser.add_argument('--tau', default=1.0, type=float, help='generalized advantage estimation discount')
     parser.add_argument('--horizon', default=8e7, type=float, help='max number of steps')
     parser.add_argument('--hidden', default=64, type=int, help='hidden size of GRU')
-    parser.add_argument('--communication', default=False, action='store_true', help='add communication')
     parser.add_argument('--vocab', default=5, type=int, help='vocabulary size for communication')
     parser.add_argument('--view-size', default=-1, type=int, help='view size of agents (0 takes env default)')
     parser.add_argument('--noise', default=0., type=float, help='noise in comm channel')
@@ -67,8 +66,6 @@ if __name__ == "__main__":
         # args.test = True # render mode -> test mode w one process
     if args.test:
         args.lr = 0 # don't train in render mode
-    if not args.communication:
-        args.vocab = 0
     if args.cpu_only:
         device = torch.device("cpu")
     else:
@@ -97,7 +94,6 @@ if __name__ == "__main__":
         f"\t Processes: {args.processes}\n" +
         f"\t Agents: {args.agents}\n" +
         f"\t Learning rate: {args.lr}\n" +
-        f"\t Communication: {args.communication}\n" +
         f"\t Vocab size: {args.vocab}\n" +
         f"\t LSTM size: {args.hidden}\n" +
         f"\t View size: {args.view_size}\n" +
@@ -109,27 +105,26 @@ if __name__ == "__main__":
     logger.info("Creating shared models and optimizers.")
     torch.manual_seed(args.seed)
     shared_models = {
-        f'agent-{i}': A3CPolicy(channels=3,
-                                memsize=args.hidden,
-                                num_actions=args.num_actions,
-                                communication=args.communication,
-                                vocab_size=args.vocab,
-                                n_agents=args.agents).share_memory().to(device)
-        for i in range(args.agents)
+        'agent-0': A3CPolicy(channels=3,
+                             memsize=args.hidden,
+                             num_actions=args.num_actions,
+                             vocab_size=args.vocab,
+                             n_agents=args.agents).share_memory().to(device),
+        'agent-1': EasySpeakerPolicy(input=args.vocab, vocab_size=args.vocab).to(device)
     }
     if args.optim == 'rmsprop':
         shared_optimizers = {
             f'agent-{i}': SharedRMSprop(shared_models[f'agent-{i}'].parameters(), lr=args.lr)
-            for i in range(args.agents)
+            for i in range(len(shared_models))
         }
     else:
         shared_optimizers = {
             f'agent-{i}': SharedAdam(shared_models[f'agent-{i}'].parameters(), lr=args.lr)
-            for i in range(args.agents)
+            for i in range(len(shared_models))
         }
     shared_schedulers = {
         f'agent-{i}': torch.optim.lr_scheduler.StepLR(shared_optimizers[f'agent-{i}'], 1000000, 0.99)
-        for i in range(args.agents)
+        for i in range(len(shared_models))
     }
 
     info = {
