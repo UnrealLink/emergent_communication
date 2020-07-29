@@ -71,6 +71,41 @@ class A3CPolicy(nn.Module):
                 logger.info("\tloaded model: {}".format(paths[index]))
         return step
 
+class EasySpeakerPolicy(nn.Module):
+    """
+    Small MLP for model.
+    """
+    def __init__(self, input=4, hidden=10, vocab_size=5):
+        super(EasySpeakerPolicy, self).__init__()
+        self.hidden_layer = nn.Linear(input, hidden)
+        self.actor = nn.Linear(hidden, vocab_size)
+        self.critic = nn.Linear(hidden, 1)
+
+    # pylint: disable=arguments-differ
+    def forward(self, inputs):
+        hidden = F.relu(self.hidden_layer(inputs))
+        logp = F.log_softmax(self.actor(hidden))
+        value = self.critic(hidden)
+        return value, logp
+
+    def try_load(self, save_dir, agent_name, logger=None):
+        """
+        Try to load saved models from save_dir
+        """
+        paths = glob.glob(os.path.join(save_dir, f'*.{agent_name}.*.tar'))
+        step = 0
+        if len(paths) > 0:
+            ckpts = [int(s.split('.')[-2]) for s in paths]
+            index = np.argmax(ckpts)
+            step = ckpts[index]
+            self.load_state_dict(torch.load(paths[index]))
+        if logger is not None:
+            if step == 0:
+                logger.info("\tno saved models")
+            else:
+                logger.info("\tloaded model: {}".format(paths[index]))
+        return step
+
 
 class SharedAdam(torch.optim.Adam):
     """
