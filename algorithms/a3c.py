@@ -149,12 +149,13 @@ class SharedRMSprop(torch.optim.RMSprop):
             super.step(closure)
 
 
-def cost_func(args, values, logps, actions, rewards, device):
+def cost_func(args, values, logps, actions, rewards, device, compute_ps_loss = False):
     """
     Compute loss for A3C training
     """
     np_values = values.view(-1).data.cpu().numpy()
 
+    ## standard A3C loss
     # generalized advantage estimation using \delta_t residuals (a policy gradient method)
     delta_t = np.asarray(rewards) + args.gamma * np_values[1:] - np_values[:-1]
     logpys = logps.gather(1, actions.clone().detach().view(-1, 1))
@@ -171,7 +172,23 @@ def cost_func(args, values, logps, actions, rewards, device):
 
     # entropy definition, for entropy regularization
     entropy_loss = (-logps * torch.exp(logps)).sum()
-    return policy_loss + 0.5 * value_loss - 0.01 * entropy_loss
+    a3c_loss = policy_loss + 0.5 * value_loss - 0.01 * entropy_loss
+
+    ## positive signalling loss
+
+    if compute_ps_loss:
+        entropies = (logps * torch.exp(logps)).sum(dim=1)
+        target_loss = 3 * ((entropies - 0.8)**2).sum()
+
+        average_policy = torch.exp(logps).sum(dim=0)/len(logps)
+        average_policy_entropy = (average_policy * torch.log(average_policy)).sum()
+
+        ps_loss = target_loss + average_policy_entropy * len(logps)
+
+        return 3 * a3c_loss + ps_loss
+
+
+    return a3c_loss
 
 
 def train(shared_models, shared_optimizers, shared_schedulers, rank, args, info):
@@ -351,17 +368,27 @@ def train(shared_models, shared_optimizers, shared_schedulers, rank, args, info)
 
             values_hist['agent-1'].append(comm_value.detach())
             values_hist['agent-0'].append(next_value.detach())
-        
-        for agent_name, model in models.items():
-            loss = cost_func(args,
-                             torch.cat(values_hist[agent_name]),
-                             torch.cat(logps_hist[agent_name]),
-                             torch.cat(actions_hist[agent_name]),
-                             np.asarray(rewards_hist[agent_name]),
-                             device=device)
-            eploss += loss.item()
-            loss.backward()
-            torch.nn.utils.clip_grad_norm_(models[agent_name].parameters(), 40)
+    
+        loss = cost_func(args,
+                            torch.cat(values_hist['agent-0']),
+                            torch.cat(logps_hist['agent-0']),
+                            torch.cat(actions_hist['agent-0']),
+                            np.asarray(rewards_hist['agent-0']),
+                            device=device)
+        eploss += loss.item()
+        loss.backward()
+        torch.nn.utils.clip_grad_norm_(models['agent-0'].parameters(), 40)
+
+        loss = cost_func(args,
+                            torch.cat(values_hist['agent-1']),
+                            torch.cat(logps_hist['agent-1']),
+                            torch.cat(actions_hist['agent-1']),
+                            np.asarray(rewards_hist['agent-1']),
+                            compute_ps_loss=True,
+                            device=device)
+        eploss += loss.item()
+        loss.backward()
+        torch.nn.utils.clip_grad_norm_(models['agent-1'].parameters(), 40)
 
         for agent_name in models.keys():
             for param, shared_param in zip(models[agent_name].parameters(), shared_models[agent_name].parameters()):
