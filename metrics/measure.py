@@ -20,7 +20,7 @@ from social_dilemmas.envs.target import TargetEnv
 
 import utils.utility_funcs as utility_funcs
 
-from algorithms.a3c import A3CPolicy, preprocess_messages, preprocess_obs, get_comm
+from algorithms.a3c import A3CPolicy, EasySpeakerPolicy, preprocess_messages, preprocess_obs, get_comm
 
 env_map = {
     'finder': FinderEnv,
@@ -44,6 +44,7 @@ def get_args():
     parser.add_argument('--hidden', default=128, type=int, help='hidden size of GRU')
     parser.add_argument('--noise', default=0., type=float, help='noise in comm channel')
     parser.add_argument('--save', default=None, type=str, help='save directory name')
+    parser.add_argument('--checkpoint', default=None, type=int, help='checkpoint to load in save dir (default max)')
     parser.add_argument('--cpu-only', default=False, action='store_true', help='prevent gpu usage')
     parser.add_argument('--render', default=False, action='store_true', help='render at each time step')
     return parser.parse_args()
@@ -78,17 +79,16 @@ if __name__ == "__main__":
     args.num_actions = env.action_space.n
 
     models = {
-        f'agent-{i}': A3CPolicy(channels=3,
-                                memsize=args.hidden,
-                                num_actions=args.num_actions,
-                                communication=args.communication,
-                                vocab_size=args.vocab,
-                                n_agents=args.agents).to(device)
-        for i in range(args.agents)
+        'agent-0': A3CPolicy(channels=3,
+                             memsize=args.hidden,
+                             num_actions=args.num_actions,
+                             vocab_size=args.vocab,
+                             n_agents=args.agents).share_memory().to(device),
+        'agent-1': EasySpeakerPolicy(input=args.vocab, vocab_size=args.vocab).to(device)
     }
 
     for agent_name, model in models.items():
-        if model.try_load(args.save_dir, agent_name, logger) == 0:
+        if model.try_load(args.save_dir, agent_name, logger, checkpoint=args.checkpoint) == 0:
             logger.warning("No trained models found.")
 
     # Matrices for tracking messages/actions co-occurences
@@ -102,24 +102,24 @@ if __name__ == "__main__":
         agent_name: preprocess_obs(ob, device=device)
         for agent_name, ob in obs.items()
     }
-    messages = {
-        agent_name: 0
-        for agent_name in models.keys()
-    }
-
-    # fig = plt.gcf()
 
     for _ in range(args.horizon):
         actions = {}
         messages = {}
         get_comm(env, messages, args.noise)
-        flat_messages = preprocess_messages(messages, args.vocab, device=device)
-        for agent_name, model in models.items():
-            value, logp = model((states[agent_name], flat_messages))
+        perfect_message = preprocess_messages(messages, args.vocab, device=device)
 
-            #TODO Should change to max
-            action = torch.argmax(logp).data
-            actions[agent_name] = int(action.cpu().numpy())
+        # get speaker message
+        comm_value, comm_logp = models['agent-1'](perfect_message)
+
+        message = torch.exp(comm_logp).multinomial(num_samples=1).data[0]
+        messages['agent-0'] = message.cpu().numpy()[0]
+        real_messages = preprocess_messages(messages, args.vocab, device=device)
+
+        # select listener action
+        value, logp = models['agent-0']((states['agent-0'], real_messages))
+        action = torch.exp(logp).multinomial(num_samples=1).data[0]
+        actions['agent-0'] = action.cpu().numpy()[0]
 
         # Update measures here
         IC[messages[f"agent-0"]][actions[f"agent-0"]] += 1

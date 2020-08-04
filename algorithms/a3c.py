@@ -45,7 +45,7 @@ class A3CPolicy(nn.Module):
         logp = F.log_softmax(self.actor_head(hidden), dim=-1)
         return value, logp
 
-    def try_load(self, save_dir, agent_name, logger=None):
+    def try_load(self, save_dir, agent_name, logger=None, checkpoint=None):
         """
         Try to load saved models from save_dir
         """
@@ -53,7 +53,7 @@ class A3CPolicy(nn.Module):
         step = 0
         if len(paths) > 0:
             ckpts = [int(s.split('.')[-2]) for s in paths]
-            index = np.argmax(ckpts)
+            index = ckpts.index(checkpoint) if checkpoint is not None else np.argmax(ckpts)
             step = ckpts[index]
             self.load_state_dict(torch.load(paths[index]))
         if logger is not None:
@@ -80,7 +80,7 @@ class EasySpeakerPolicy(nn.Module):
         value = self.critic(hidden)
         return value, logp
 
-    def try_load(self, save_dir, agent_name, logger=None):
+    def try_load(self, save_dir, agent_name, logger=None, checkpoint=None):
         """
         Try to load saved models from save_dir
         """
@@ -88,7 +88,8 @@ class EasySpeakerPolicy(nn.Module):
         step = 0
         if len(paths) > 0:
             ckpts = [int(s.split('.')[-2]) for s in paths]
-            index = np.argmax(ckpts)
+            index = ckpts.index(checkpoint) if checkpoint is not None else np.argmax(ckpts)
+            print(index)
             step = ckpts[index]
             self.load_state_dict(torch.load(paths[index]))
         if logger is not None:
