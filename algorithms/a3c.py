@@ -89,7 +89,6 @@ class EasySpeakerPolicy(nn.Module):
         if len(paths) > 0:
             ckpts = [int(s.split('.')[-2]) for s in paths]
             index = ckpts.index(checkpoint) if checkpoint is not None else np.argmax(ckpts)
-            print(index)
             step = ckpts[index]
             self.load_state_dict(torch.load(paths[index]))
         if logger is not None:
@@ -150,7 +149,7 @@ class SharedRMSprop(torch.optim.RMSprop):
             super.step(closure)
 
 
-def cost_func(args, values, logps, actions, rewards, device, compute_ps_loss = False):
+def cost_func(args, values, logps, actions, rewards, device):
     """
     Compute loss for A3C training
     """
@@ -175,21 +174,18 @@ def cost_func(args, values, logps, actions, rewards, device, compute_ps_loss = F
     entropy_loss = (-logps * torch.exp(logps)).sum()
     a3c_loss = policy_loss + 0.5 * value_loss - 0.01 * entropy_loss
 
-    ## positive signalling loss
-
-    if compute_ps_loss:
-        entropies = (logps * torch.exp(logps)).sum(dim=1)
-        target_loss = 3 * ((entropies - 0.8)**2).sum()
-
-        average_policy = torch.exp(logps).sum(dim=0)/len(logps)
-        average_policy_entropy = (average_policy * torch.log(average_policy)).sum()
-
-        ps_loss = target_loss + average_policy_entropy * len(logps)
-
-        return 3 * a3c_loss + ps_loss
-
-
     return a3c_loss
+
+def positive_signaling_loss(logps):
+    entropies = (logps * torch.exp(logps)).sum(dim=1)
+    target_loss = 3 * ((entropies - 0.65)**2).sum()
+
+    average_policy = torch.exp(logps).sum(dim=0)/len(logps)
+    average_policy_entropy = (average_policy * torch.log(average_policy)).sum()
+
+    ps_loss = target_loss + 3 * average_policy_entropy * len(logps)
+
+    return ps_loss
 
 
 def train(shared_models, shared_optimizers, shared_schedulers, rank, args, info):
@@ -217,6 +213,9 @@ def train(shared_models, shared_optimizers, shared_schedulers, rank, args, info)
                              n_agents=args.agents).share_memory().to(device),
         'agent-1': EasySpeakerPolicy(input=args.vocab, vocab_size=args.vocab).to(device)
     }  # local/unshared models
+    for agent_name, model in models.items():
+        # sync with shared model
+        model.load_state_dict(shared_models[agent_name].state_dict())
     obs = env.reset()
     states = {
         agent_name: preprocess_obs(ob, device=device)
@@ -230,37 +229,36 @@ def train(shared_models, shared_optimizers, shared_schedulers, rank, args, info)
         f'agent-{i}': True
         for i in range(args.agents)
     }
+    steps = 0
 
-    # openai baselines uses 40M frames...we'll use 80M
-    while info['frames'][0] <= args.horizon or args.test:
-        for agent_name, model in models.items():
-            # sync with shared model
-            model.load_state_dict(shared_models[agent_name].state_dict())
+    while int(info['frames'].item()) - start_frames < args.horizon or args.test:
 
         # save values for computing gradients
-        values_hist = {
-            'agent-0': [],
-            'agent-1': []
-        }
-        logps_hist = {
-            'agent-0': [],
-            'agent-1': []
-        }
-        actions_hist = {
-            'agent-0': [],
-            'agent-1': []
-        }
-        rewards_hist = {
-            'agent-0': [],
-            'agent-1': []
-        }
+        if steps % args.batch_size == 0:
+            values_hist = {
+                'agent-0': [],
+                'agent-1': []
+            }
+            logps_hist = {
+                'agent-0': [],
+                'agent-1': []
+            }
+            actions_hist = {
+                'agent-0': [],
+                'agent-1': []
+            }
+            rewards_hist = {
+                'agent-0': [],
+                'agent-1': []
+            }
 
-        for _ in range(args.rnn_steps):
+        for _ in range(args.tmax):
             episode_length += 1
             actions = {}
             messages = {}
             get_comm(env, messages, args.noise)
             perfect_message = preprocess_messages(messages, args.vocab, device=device)
+            # print(messages)
 
             # get speaker message
             comm_value, comm_logp = models['agent-1'](perfect_message)
@@ -271,6 +269,8 @@ def train(shared_models, shared_optimizers, shared_schedulers, rank, args, info)
             else:
                 message = torch.exp(comm_logp).multinomial(num_samples=1).data[0]
                 messages['agent-0'] = message.cpu().numpy()[0]
+
+            # print(messages)
 
             values_hist['agent-1'].append(comm_value)
             logps_hist['agent-1'].append(comm_logp)
@@ -287,6 +287,9 @@ def train(shared_models, shared_optimizers, shared_schedulers, rank, args, info)
             else:
                 action = torch.exp(logp).multinomial(num_samples=1).data[0]
                 actions['agent-0'] = action.cpu().numpy()[0]
+
+            # print(actions)
+            # print()
 
             values_hist['agent-0'].append(value)
             logps_hist['agent-0'].append(logp)
@@ -312,6 +315,7 @@ def train(shared_models, shared_optimizers, shared_schedulers, rank, args, info)
                 rewards_hist[agent_name].append(rewards[agent_name])
 
             info['frames'].add_(1)
+            steps += 1
             num_frames = int(info['frames'].item())
 
             if num_frames % 1e6 == 0:  # save every 1M frames
@@ -369,35 +373,43 @@ def train(shared_models, shared_optimizers, shared_schedulers, rank, args, info)
 
             values_hist['agent-1'].append(comm_value.detach())
             values_hist['agent-0'].append(next_value.detach())
-    
+
         loss = cost_func(args,
-                            torch.cat(values_hist['agent-0']),
-                            torch.cat(logps_hist['agent-0']),
-                            torch.cat(actions_hist['agent-0']),
-                            np.asarray(rewards_hist['agent-0']),
+                            torch.cat(values_hist['agent-0'][-args.tmax-1:]),
+                            torch.cat(logps_hist['agent-0'][-args.tmax:]),
+                            torch.cat(actions_hist['agent-0'][-args.tmax:]),
+                            np.asarray(rewards_hist['agent-0'][-args.tmax:]),
                             device=device)
         eploss += loss.item()
         loss.backward()
         torch.nn.utils.clip_grad_norm_(models['agent-0'].parameters(), 40)
 
         loss = cost_func(args,
-                            torch.cat(values_hist['agent-1']),
-                            torch.cat(logps_hist['agent-1']),
-                            torch.cat(actions_hist['agent-1']),
-                            np.asarray(rewards_hist['agent-1']),
-                            compute_ps_loss=True,
+                            torch.cat(values_hist['agent-1'][-args.tmax-1:]),
+                            torch.cat(logps_hist['agent-1'][-args.tmax:]),
+                            torch.cat(actions_hist['agent-1'][-args.tmax:]),
+                            np.asarray(rewards_hist['agent-1'][-args.tmax:]),
                             device=device)
         eploss += loss.item()
-        loss.backward()
+        loss.backward(retain_graph=True)
         torch.nn.utils.clip_grad_norm_(models['agent-1'].parameters(), 40)
 
-        for agent_name in models.keys():
-            for param, shared_param in zip(models[agent_name].parameters(), shared_models[agent_name].parameters()):
-                if shared_param.grad is None:
-                    shared_param._grad = param.grad  # sync gradients with shared model
-            shared_optimizers[agent_name].step()
-            shared_optimizers[agent_name].zero_grad()
-            shared_schedulers[agent_name].step()
+        if steps % args.batch_size == 0:
+            ps_loss = positive_signaling_loss(torch.cat(logps_hist['agent-1']))
+            ps_loss.backward()
+            torch.nn.utils.clip_grad_norm_(models['agent-1'].parameters(), 40)
+
+        if steps % args.batch_size == 0:
+            for agent_name, model in models.items():
+                for param, shared_param in zip(models[agent_name].parameters(), shared_models[agent_name].parameters()):
+                    if shared_param.grad is None:
+                        shared_param._grad = param.grad  # sync gradients with shared model
+                shared_optimizers[agent_name].step()
+                shared_optimizers[agent_name].zero_grad()
+                shared_schedulers[agent_name].step()
+
+                # sync with shared model
+                model.load_state_dict(shared_models[agent_name].state_dict())
 
 
 # Utils

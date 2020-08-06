@@ -25,7 +25,7 @@ class TargetEnv(MapEnv):
     def setup_agents(self):
         map_with_agents = self.get_map_with_agents()
 
-        spawn_point = self.spawn_points[0]
+        spawn_point = self.spawn_point()
         rotation = self.spawn_rotation(fixed=True)
         grid = map_with_agents
         if self.view_size is None:

@@ -41,7 +41,8 @@ def get_args():
     parser.add_argument('--processes', default=12, type=int, help='number of processes to train with')
     parser.add_argument('--render', default=False, action='store_true', help='renders the atari environment')
     parser.add_argument('--test', default=False, action='store_true', help='sets lr=0, chooses most likely actions')
-    parser.add_argument('--rnn-steps', default=20, type=int, help='steps to train LSTM over')
+    parser.add_argument('--tmax', default=5, type=int, help='number of steps for A3C loss')
+    parser.add_argument('--batch-size', default=300, type=int, help='number of steps before updating shared model')
     parser.add_argument('--lr', default=1e-4, type=float, help='learning rate')
     parser.add_argument('--optim', default='adam', type=str, help='can be either adam or rmsprop')
     parser.add_argument('--seed', default=1, type=int, help='set random seed')
@@ -53,6 +54,7 @@ def get_args():
     parser.add_argument('--view-size', default=-1, type=int, help='view size of agents (0 takes env default)')
     parser.add_argument('--noise', default=0., type=float, help='noise in comm channel')
     parser.add_argument('--save', default=None, type=str, help='save directory name')
+    parser.add_argument('--checkpoint', default=None, type=int, help='checkpoint to load in save dir (default max)')
     parser.add_argument('--cpu-only', default=False, action='store_true', help='prevent gpu usage')
     return parser.parse_args()
 
@@ -123,7 +125,7 @@ if __name__ == "__main__":
             for i in range(len(shared_models))
         }
     shared_schedulers = {
-        f'agent-{i}': torch.optim.lr_scheduler.StepLR(shared_optimizers[f'agent-{i}'], 1000000, 0.98)
+        f'agent-{i}': torch.optim.lr_scheduler.StepLR(shared_optimizers[f'agent-{i}'], 10000, 0.98)
         for i in range(len(shared_models))
     }
 
@@ -135,7 +137,7 @@ if __name__ == "__main__":
     logger.info("Loading previous shared models parameters.")
     frames = []
     for agent_name, shared_model in shared_models.items():
-        frames.append(shared_model.try_load(args.save_dir, agent_name, logger) * 1e6)
+        frames.append(shared_model.try_load(args.save_dir, agent_name, logger, checkpoint=args.checkpoint) * 1e6)
     if min(frames) != max(frames):
         logger.warning("Loaded models do not have the same number of training frames between agents")
     info['frames'] += max(frames)
