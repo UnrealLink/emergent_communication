@@ -183,8 +183,10 @@ def positive_signaling_loss(logps):
     average_policy = torch.exp(logps).sum(dim=0)/len(logps)
     average_policy_entropy = (average_policy * torch.log(average_policy)).sum()
 
-    ps_loss = target_loss + 3 * average_policy_entropy * len(logps)
-
+    ps_loss = target_loss + 10 * average_policy_entropy * len(logps)
+    # print(target_loss)
+    # print(ps_loss)
+    # print()
     return ps_loss
 
 

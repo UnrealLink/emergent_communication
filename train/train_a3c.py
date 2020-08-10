@@ -55,6 +55,7 @@ def get_args():
     parser.add_argument('--noise', default=0., type=float, help='noise in comm channel')
     parser.add_argument('--save', default=None, type=str, help='save directory name')
     parser.add_argument('--checkpoint', default=None, type=int, help='checkpoint to load in save dir (default max)')
+    parser.add_argument('--factor', default=5, type=int, help='arg to perform sweep on hyper parameter')
     parser.add_argument('--cpu-only', default=False, action='store_true', help='prevent gpu usage')
     return parser.parse_args()
 
