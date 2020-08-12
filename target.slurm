@@ -8,7 +8,7 @@
 #SBATCH --time=36:00:00
 #SBATCH --cpus-per-task=16
 #
-#SBATCH --array=0-4
+#SBATCH --array=0-9
 
 # useful informations to print
 echo "#############################" 
@@ -23,6 +23,8 @@ echo "#############################"
 
 #############################
 
-/gpfs/home/vvillecroze/miniconda3/envs/custom_ssd/bin/python train/train_a3c.py --env target --save target_easy_speaker_view_0_noise_0_$SLURM_ARRAY_TASK_ID --view-size 0 --communication --seed $SLURM_ARRAY_TASK_ID --horizon 3000000 --cpu-only --noise 0
+gpfs/home/vvillecroze/miniconda3/envs/custom_ssd/bin/python train/train_a3c.py \
+    --env target --save easy_speaker_bias_view_0_$SLURM_ARRAY_TASK_ID --view-size 0 \
+    --seed $SLURM_ARRAY_TASK_ID --horizon 20000000 --cpu--only
 
 echo "Job finished"
