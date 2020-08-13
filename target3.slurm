@@ -23,8 +23,8 @@ echo "#############################"
 
 #############################
 
-gpfs/home/vvillecroze/miniconda3/envs/custom_ssd/bin/python train/train_a3c.py \
+/gpfs/home/vvillecroze/miniconda3/envs/custom_ssd/bin/python train/train_a3c.py \
     --env target --save easy_speaker_bias_view_3_$SLURM_ARRAY_TASK_ID --view-size 3 \
-    --seed $SLURM_ARRAY_TASK_ID --horizon 20000000 --cpu--only
+    --seed $SLURM_ARRAY_TASK_ID --horizon 20000000 --cpu-only
 
 echo "Job finished"
