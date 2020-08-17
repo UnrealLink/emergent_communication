@@ -20,7 +20,7 @@ from social_dilemmas.envs.target import TargetEnv
 
 import utils.utility_funcs as utility_funcs
 
-from algorithms.a3c import A3CPolicy, EasySpeakerPolicy, preprocess_messages, preprocess_obs, get_comm
+from algorithms.a3c import ListenerPolicy, SpeakerPolicy, preprocess_messages, preprocess_obs, get_comm
 
 env_map = {
     'finder': FinderEnv,
@@ -79,12 +79,12 @@ if __name__ == "__main__":
     args.num_actions = env.action_space.n
 
     models = {
-        'agent-0': A3CPolicy(channels=3,
+        'agent-0': ListenerPolicy(channels=3,
                              memsize=args.hidden,
                              num_actions=args.num_actions,
                              vocab_size=args.vocab,
                              n_agents=args.agents).share_memory().to(device),
-        'agent-1': EasySpeakerPolicy(input=args.vocab, vocab_size=args.vocab).to(device)
+        'agent-1': SpeakerPolicy(input=args.vocab, vocab_size=args.vocab).to(device)
     }
 
     for agent_name, model in models.items():

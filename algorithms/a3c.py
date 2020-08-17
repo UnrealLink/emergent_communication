@@ -20,12 +20,12 @@ import utils.utility_funcs as utility_funcs
 
 os.environ['OMP_NUM_THREADS'] = '1'
 
-class A3CPolicy(nn.Module):
+class ListenerPolicy(nn.Module):
     """
     Actor-critic model for A3C algorithm.
     """
-    def __init__(self, channels, memsize, num_actions, vocab_size=0, n_agents=5):
-        super(A3CPolicy, self).__init__()
+    def __init__(self, channels, memsize, num_actions, vocab_size=0, n_agents=1):
+        super(ListenerPolicy, self).__init__()
         self.conv1 = nn.Conv2d(channels, 32, 3, stride=2, padding=1)
         self.conv2 = nn.Conv2d(32, 32, 3, stride=2, padding=1)
         self.conv3 = nn.Conv2d(32, 32, 3, stride=2, padding=1)
@@ -63,21 +63,29 @@ class A3CPolicy(nn.Module):
                 logger.info("\tloaded model: {}".format(paths[index]))
         return step
 
-class EasySpeakerPolicy(nn.Module):
+class SpeakerPolicy(nn.Module):
     """
-    Small MLP for model.
+    Actor-critic model for A3C algorithm.
     """
-    def __init__(self, input=4, hidden=10, vocab_size=5):
-        super(EasySpeakerPolicy, self).__init__()
-        self.hidden_layer = nn.Linear(input, hidden)
-        self.actor = nn.Linear(hidden, vocab_size)
-        self.critic = nn.Linear(hidden, 1)
+    def __init__(self, channels, memsize, vocab_size):
+        super(SpeakerPolicy, self).__init__()
+        self.conv1 = nn.Conv2d(channels, 32, 3, stride=2, padding=1)
+        self.conv2 = nn.Conv2d(32, 32, 3, stride=2, padding=1)
+        self.conv3 = nn.Conv2d(32, 32, 3, stride=2, padding=1)
+        self.hidden = nn.Linear(128, memsize)
+        self.critic_head = nn.Linear(memsize, 1)
+        self.actor_head = nn.Linear(memsize, vocab_size)
 
     # pylint: disable=arguments-differ
     def forward(self, inputs):
-        hidden = F.relu(self.hidden_layer(inputs))
-        logp = F.log_softmax(self.actor(hidden), dim=-1)
-        value = self.critic(hidden)
+        visual = inputs
+        visual = F.relu(self.conv1(visual))
+        visual = F.relu(self.conv2(visual))
+        visual = F.relu(self.conv3(visual))
+        full_input = visual.view(-1, 128)
+        hidden = self.hidden(full_input)
+        value = self.critic_head(hidden)
+        logp = F.log_softmax(self.actor_head(hidden), dim=-1)
         return value, logp
 
     def try_load(self, save_dir, agent_name, logger=None, checkpoint=None):
@@ -208,12 +216,13 @@ def train(shared_models, shared_optimizers, shared_schedulers, rank, args, info)
     env = args.env_maker(num_agents=args.agents, seed=args.seed + rank, view_size=args.view_size)
     torch.manual_seed(args.seed + rank)  # seed everything
     models = {
-        'agent-0': A3CPolicy(channels=3,
+        'agent-0': ListenerPolicy(channels=3,
                              memsize=args.hidden,
                              num_actions=args.num_actions,
-                             vocab_size=args.vocab,
-                             n_agents=args.agents).share_memory().to(device),
-        'agent-1': EasySpeakerPolicy(input=args.vocab, vocab_size=args.vocab).to(device)
+                             vocab_size=args.vocab).share_memory().to(device),
+        'agent-1': SpeakerPolicy(channels=3,
+                             memsize=args.hidden,
+                             vocab_size=args.vocab).share_memory().to(device)
     }  # local/unshared models
     for agent_name, model in models.items():
         # sync with shared model
@@ -258,30 +267,27 @@ def train(shared_models, shared_optimizers, shared_schedulers, rank, args, info)
             episode_length += 1
             actions = {}
             messages = {}
-            get_comm(env, messages, args.noise)
-            perfect_message = preprocess_messages(messages, args.vocab, device=device)
-            # print(messages)
-
+            
             # get speaker message
-            comm_value, comm_logp = models['agent-1'](perfect_message)
+            comm_value, comm_logp = models['agent-1'](states['agent-1'])
 
             if args.test:
                 message = torch.argmax(comm_logp).unsqueeze(0).data
-                messages['agent-0'] = int(message.cpu().numpy()[0])
+                messages['agent-1'] = int(message.cpu().numpy()[0])
             else:
                 message = torch.exp(comm_logp).multinomial(num_samples=1).data[0]
-                messages['agent-0'] = message.cpu().numpy()[0]
+                messages['agent-1'] = message.cpu().numpy()[0]
 
-            # print(messages)
+            actions['agent-1'] = 4 #STAY
 
             values_hist['agent-1'].append(comm_value)
             logps_hist['agent-1'].append(comm_logp)
             actions_hist['agent-1'].append(message)
 
-            real_messages = preprocess_messages(messages, args.vocab, device=device)
+            transmission = preprocess_messages(messages, args.vocab, device=device)
 
             # select listener action
-            value, logp = models['agent-0']((states['agent-0'], real_messages))
+            value, logp = models['agent-0']((states['agent-0'], transmission))
 
             if args.test:
                 action = torch.argmax(logp).unsqueeze(0).data
@@ -289,9 +295,6 @@ def train(shared_models, shared_optimizers, shared_schedulers, rank, args, info)
             else:
                 action = torch.exp(logp).multinomial(num_samples=1).data[0]
                 actions['agent-0'] = action.cpu().numpy()[0]
-
-            # print(actions)
-            # print()
 
             values_hist['agent-0'].append(value)
             logps_hist['agent-0'].append(logp)
@@ -307,8 +310,6 @@ def train(shared_models, shared_optimizers, shared_schedulers, rank, args, info)
                 agent_name: preprocess_obs(ob, device=device)
                 for agent_name, ob in obs.items()
             }
-
-            rewards['agent-1'] = rewards['agent-0']
 
             epr += np.sum([reward for reward in rewards.values()])
 
@@ -359,19 +360,16 @@ def train(shared_models, shared_optimizers, shared_schedulers, rank, args, info)
             values_hist['agent-0'].append(next_value.detach())
             values_hist['agent-1'].append(next_value.detach())
         else:
-            get_comm(env, messages, args.noise)
-            perfect_message = preprocess_messages(messages, args.vocab, device=device)
-
             # get speaker message
-            comm_value, comm_logp = models['agent-1'](perfect_message)
+            comm_value, comm_logp = models['agent-1'](states['agent-1'])
 
             message = torch.exp(comm_logp).multinomial(num_samples=1).data[0]
-            messages['agent-0'] = message.cpu().numpy()[0]
+            messages['agent-1'] = message.cpu().numpy()[0]
 
-            real_messages = preprocess_messages(messages, args.vocab, device=device)
+            transmission = preprocess_messages(messages, args.vocab, device=device)
 
             # select listener action
-            next_value, _ = models['agent-0']((states['agent-0'], real_messages))
+            next_value, _ = models['agent-0']((states['agent-0'], transmission))
 
             values_hist['agent-1'].append(comm_value.detach())
             values_hist['agent-0'].append(next_value.detach())

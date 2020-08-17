@@ -90,12 +90,15 @@ class MapEnv(gym.Env):
         self.pos_dict = {}
         self.color_map = color_map if color_map is not None else DEFAULT_COLOURS
         self.spawn_points = []  # where agents can appear
+        self.speaker_spawn_point = []
 
         self.wall_points = []
         for row in range(self.base_map.shape[0]):
             for col in range(self.base_map.shape[1]):
                 if self.base_map[row, col] == 'P':
                     self.spawn_points.append([row, col])
+                if self.base_map[row, col] == 'S':
+                    self.speaker_spawn_point.append([row, col])
                 elif self.base_map[row, col] == '@':
                     self.wall_points.append([row, col])
         self.setup_agents()

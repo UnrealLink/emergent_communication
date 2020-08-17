@@ -29,10 +29,16 @@ class TargetEnv(MapEnv):
         rotation = self.spawn_rotation(fixed=True)
         grid = map_with_agents
         if self.view_size is None:
-            agent0 = TargetAgent('agent-0', spawn_point, rotation, grid)
+            listener = TargetAgent('agent-0', spawn_point, rotation, grid)
         else:
-            agent0 = TargetAgent('agent-0', spawn_point, rotation, grid, view_len=self.view_size)
-        self.agents['agent-0'] = agent0
+            listener = TargetAgent('agent-0', spawn_point, rotation, grid, view_len=self.view_size)
+        self.agents['agent-0'] = listener
+
+        spawn_point = self.speaker_spawn_point[0]
+        rotation = self.spawn_rotation(fixed=True)
+        grid = map_with_agents
+        speaker = TargetAgent('agent-1', spawn_point, rotation, grid, view_len=int((len(grid)-3)/2))
+        self.agents['agent-1'] = speaker
 
 
     def custom_reset(self):
@@ -46,6 +52,7 @@ class TargetEnv(MapEnv):
         if self.agents['agent-0'].consumed:
             self.agents['agent-0'].consumed = False
             self.agents['agent-0'].reward_this_turn += 1
+            self.agents['agent-1'].reward_this_turn += 1
             self.spawn_random_apple()
 
 

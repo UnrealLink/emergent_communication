@@ -18,7 +18,7 @@ from social_dilemmas.envs.finder import FinderEnv
 from social_dilemmas.envs.treasure import TreasureEnv
 from social_dilemmas.envs.target import TargetEnv
 
-from algorithms.a3c import A3CPolicy, EasySpeakerPolicy, SharedAdam, SharedRMSprop, train
+from algorithms.a3c import ListenerPolicy, SpeakerPolicy, SharedAdam, SharedRMSprop, train
 
 os.environ['OMP_NUM_THREADS'] = '1'
 
@@ -37,7 +37,7 @@ def get_args():
     """
     parser = argparse.ArgumentParser(description=None)
     parser.add_argument('--env', default='finder', type=str, help='environment name')
-    parser.add_argument('--agents', default=1, type=int, help='number of agents in environment')
+    parser.add_argument('--agents', default=2, type=int, help='number of agents in environment')
     parser.add_argument('--processes', default=12, type=int, help='number of processes to train with')
     parser.add_argument('--render', default=False, action='store_true', help='renders the atari environment')
     parser.add_argument('--test', default=False, action='store_true', help='sets lr=0, chooses most likely actions')
@@ -52,7 +52,7 @@ def get_args():
     parser.add_argument('--hidden', default=64, type=int, help='hidden size of GRU')
     parser.add_argument('--vocab', default=5, type=int, help='vocabulary size for communication')
     parser.add_argument('--view-size', default=-1, type=int, help='view size of agents (0 takes env default)')
-    parser.add_argument('--noise', default=0., type=float, help='noise in comm channel')
+    # parser.add_argument('--noise', default=0., type=float, help='noise in comm channel')
     parser.add_argument('--save', default=None, type=str, help='save directory name')
     parser.add_argument('--checkpoint', default=None, type=int, help='checkpoint to load in save dir (default max)')
     parser.add_argument('--factor', default=5, type=int, help='arg to perform sweep on hyper parameter')
@@ -84,7 +84,7 @@ if __name__ == "__main__":
         args.view_size = None
 
     args.env_maker = env_map[args.env]
-    single_env = args.env_maker(num_agents=1)
+    single_env = args.env_maker(num_agents=args.agents)
     args.num_actions = single_env.action_space.n # get the action space of this game
     if not os.path.exists(args.save_dir):
         os.makedirs(args.save_dir) # make dir to save models etc.
@@ -108,12 +108,13 @@ if __name__ == "__main__":
     logger.info("Creating shared models and optimizers.")
     torch.manual_seed(args.seed)
     shared_models = {
-        'agent-0': A3CPolicy(channels=3,
+        'agent-0': ListenerPolicy(channels=3,
                              memsize=args.hidden,
                              num_actions=args.num_actions,
-                             vocab_size=args.vocab,
-                             n_agents=args.agents).share_memory().to(device),
-        'agent-1': EasySpeakerPolicy(input=args.vocab, vocab_size=args.vocab).to(device)
+                             vocab_size=args.vocab).share_memory().to(device),
+        'agent-1': SpeakerPolicy(channels=3,
+                             memsize=args.hidden,
+                             vocab_size=args.vocab).share_memory().to(device)
     }
     if args.optim == 'rmsprop':
         shared_optimizers = {
