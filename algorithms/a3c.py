@@ -271,12 +271,18 @@ def train(shared_models, shared_optimizers, shared_schedulers, rank, args, info)
             # get speaker message
             comm_value, comm_logp = models['agent-1'](states['agent-1'])
 
-            if args.test:
-                message = torch.argmax(comm_logp).unsqueeze(0).data
-                messages['agent-1'] = int(message.cpu().numpy()[0])
-            else:
-                message = torch.exp(comm_logp).multinomial(num_samples=1).data[0]
-                messages['agent-1'] = message.cpu().numpy()[0]
+            try:
+                if args.test:
+                    message = torch.argmax(comm_logp).unsqueeze(0).data
+                    messages['agent-1'] = int(message.cpu().numpy()[0])
+                else:
+                    message = torch.exp(comm_logp).multinomial(num_samples=1).data[0]
+                    messages['agent-1'] = message.cpu().numpy()[0]
+            except Exception as e:
+                print(comm_logp)
+                print(torch.exp(comm_logp))
+                raise e
+
 
             actions['agent-1'] = 4 #STAY
 

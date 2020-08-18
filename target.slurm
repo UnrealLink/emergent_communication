@@ -1,7 +1,7 @@
 #!/bin/bash
 #
 #SBATCH --job-name=target
-#SBATCH --output=outputs/target.txt
+#SBATCH --output=outputs/test.txt
 #SBATCH --chdir=/gpfs/home/vvillecroze/emergent_communication
 #
 #SBATCH --ntasks=1
@@ -24,7 +24,7 @@ echo "#############################"
 #############################
 
 /gpfs/home/vvillecroze/miniconda3/envs/custom_ssd/bin/python train/train_a3c.py \
-    --env target --save easy_speaker_bias_view_0_$SLURM_ARRAY_TASK_ID --view-size 0 \
+    --env target --save test --view-size 0 \
     --seed $SLURM_ARRAY_TASK_ID --horizon 20000000 --cpu-only
 
 echo "Job finished"
