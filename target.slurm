@@ -24,7 +24,7 @@ echo "#############################"
 #############################
 
 /gpfs/home/vvillecroze/miniconda3/envs/custom_ssd/bin/python train/train_a3c.py \
-    --env target --save test --view-size 0 \
-    --seed $SLURM_ARRAY_TASK_ID --horizon 20000000 --cpu-only
+    --env target --save test_$SLURM_ARRAY_TASK_ID --view-size 0 \
+    --seed $SLURM_ARRAY_TASK_ID --horizon 200000000 --cpu-only
 
 echo "Job finished"

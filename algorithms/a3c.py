@@ -111,7 +111,7 @@ class SharedAdam(torch.optim.Adam):
     """
     Extends a pytorch optimizer so it shares grads across processes
     """
-    def __init__(self, params, lr=1e-3, betas=(0.9, 0.999), eps=1e-8, weight_decay=0):
+    def __init__(self, params, lr=1e-3, betas=(0.9, 0.999), eps=1e-8, weight_decay=0.01):
         super(SharedAdam, self).__init__(params, lr, betas, eps, weight_decay)
         for group in self.param_groups:
             for param in group['params']:
@@ -136,7 +136,7 @@ class SharedRMSprop(torch.optim.RMSprop):
     """
     Extends a pytorch optimizer so it shares grads across processes
     """
-    def __init__(self, params, lr=1e-3, alpha=0.99, eps=1e-8, weight_decay=0):
+    def __init__(self, params, lr=1e-3, alpha=0.99, eps=1e-8, weight_decay=0.01):
         super(SharedRMSprop, self).__init__(params, lr, alpha, eps, weight_decay)
         for group in self.param_groups:
             for param in group['params']:
