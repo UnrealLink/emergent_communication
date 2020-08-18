@@ -279,8 +279,9 @@ def train(shared_models, shared_optimizers, shared_schedulers, rank, args, info)
                     message = torch.exp(comm_logp).multinomial(num_samples=1).data[0]
                     messages['agent-1'] = message.cpu().numpy()[0]
             except Exception as e:
-                print(comm_logp)
-                print(torch.exp(comm_logp))
+                logger.error(states['agent-1'])
+                model_path = os.path.join(args.save_dir, f'model.speaker.error.tar')
+                torch.save(shared_models['agent-1'].state_dict(), model_path)
                 raise e
 
 
