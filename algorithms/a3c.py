@@ -403,12 +403,16 @@ def train(shared_models, shared_optimizers, shared_schedulers, rank, args, info)
 
         if steps % args.batch_size == 0:
             ps_loss = positive_signaling_loss(torch.cat(logps_hist['agent-1']))
+            logger.debug('ps_loss:')
+            logger.debug(ps_loss)
             ps_loss.backward()
             torch.nn.utils.clip_grad_norm_(models['agent-1'].parameters(), 40)
 
         if steps % args.batch_size == 0:
             for agent_name, model in models.items():
                 for param, shared_param in zip(models[agent_name].parameters(), shared_models[agent_name].parameters()):
+                    if agent_name == 'agent-1':
+                        logger.debug(param.grad)
                     if shared_param.grad is None:
                         shared_param._grad = param.grad  # sync gradients with shared model
                 shared_optimizers[agent_name].step()
