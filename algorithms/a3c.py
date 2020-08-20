@@ -11,6 +11,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from scipy.signal import lfilter
 import cv2
+import matplotlib.pyplot as plt
 
 import torch
 import torch.nn as nn
@@ -46,11 +47,30 @@ class A3CPolicy(nn.Module):
         visual = F.relu(self.conv3(visual))
         if self.communication:
             full_input = torch.cat((visual.view(-1, 128), messages), 1)
+            # full_input.retain_grad()
         else:
             full_input = visual.view(-1, 128)
         hidden = self.hidden(full_input)
         value = self.critic_head(hidden)
-        logp = F.log_softmax(self.actor_head(hidden), dim=-1)
+        scores = self.actor_head(hidden)
+        # score_max_index = scores.argmax()
+        # score_max = scores[0, score_max_index]
+        # score_max.backward()
+        # saliency = full_input.grad.data.abs().numpy()
+        # visual_saliency = saliency[0, :-5].reshape(16, 8)/np.max(saliency)
+        # message_saliency = saliency[0, -5:].reshape(1, 5)/np.max(saliency)
+        # fig = plt.gcf()
+        # fig.clf()
+        # fig.add_subplot(1, 2, 1)
+        # plt.imshow(visual_saliency, cmap=plt.cm.hot, vmin=0, vmax=1.5)
+        # plt.axis('off')
+        # fig.add_subplot(1, 2, 2)
+        # plt.imshow(message_saliency, cmap=plt.cm.hot, vmin=0, vmax=1.5)
+        # plt.axis('off')
+        # fig.show()
+        # fig.canvas.draw()
+        # time.sleep(0.5)
+        logp = F.log_softmax(scores, dim=-1)
         return value, logp
 
     def try_load(self, save_dir, agent_name, logger=None):

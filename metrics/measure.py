@@ -36,12 +36,12 @@ def get_args():
     """
     parser = argparse.ArgumentParser(description=None)
     parser.add_argument('--env', default='finder', type=str, help='environment name')
-    parser.add_argument('--agents', default=5, type=int, help='number of agents in environment')
+    parser.add_argument('--agents', default=1, type=int, help='number of agents in environment')
     parser.add_argument('--horizon', default=1000, type=int, help='number of steps to measure on')
     parser.add_argument('--seed', default=1, type=int, help='set random seed')
     parser.add_argument('--vocab', default=5, type=int, help='vocabulary size for communication')
     parser.add_argument('--view-size', default=0, type=int, help='view size of agents (0 takes env default)')
-    parser.add_argument('--hidden', default=128, type=int, help='hidden size of GRU')
+    parser.add_argument('--hidden', default=64, type=int, help='hidden size of GRU')
     parser.add_argument('--noise', default=0., type=float, help='noise in comm channel')
     parser.add_argument('--save', default=None, type=str, help='save directory name')
     parser.add_argument('--cpu-only', default=False, action='store_true', help='prevent gpu usage')
@@ -90,6 +90,7 @@ if __name__ == "__main__":
     for agent_name, model in models.items():
         if model.try_load(args.save_dir, agent_name, logger) == 0:
             logger.warning("No trained models found.")
+        model.eval()
 
     # Matrices for tracking messages/actions co-occurences
     IC = np.zeros((args.vocab, args.num_actions))
