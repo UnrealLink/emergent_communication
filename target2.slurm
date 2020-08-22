@@ -5,7 +5,7 @@
 #SBATCH --chdir=/gpfs/home/vvillecroze/emergent_communication
 #
 #SBATCH --ntasks=1
-#SBATCH --time=36:00:00
+#SBATCH --time=60:00:00
 #SBATCH --cpus-per-task=16
 #
 #SBATCH --array=0-9
