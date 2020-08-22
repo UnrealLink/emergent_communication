@@ -35,13 +35,13 @@ def get_args():
     Get arguments
     """
     parser = argparse.ArgumentParser(description=None)
-    parser.add_argument('--env', default='finder', type=str, help='environment name')
-    parser.add_argument('--agents', default=5, type=int, help='number of agents in environment')
+    parser.add_argument('--env', default='target', type=str, help='environment name')
+    parser.add_argument('--agents', default=1, type=int, help='number of agents in environment')
     parser.add_argument('--horizon', default=1000, type=int, help='number of steps to measure on')
-    parser.add_argument('--seed', default=1, type=int, help='set random seed')
+    parser.add_argument('--seed', default=0, type=int, help='set random seed')
     parser.add_argument('--vocab', default=5, type=int, help='vocabulary size for communication')
     parser.add_argument('--view-size', default=0, type=int, help='view size of agents (0 takes env default)')
-    parser.add_argument('--hidden', default=128, type=int, help='hidden size of GRU')
+    parser.add_argument('--hidden', default=64, type=int, help='hidden size of GRU')
     parser.add_argument('--noise', default=0., type=float, help='noise in comm channel')
     parser.add_argument('--save', default=None, type=str, help='save directory name')
     parser.add_argument('--checkpoint', default=None, type=int, help='checkpoint to load in save dir (default max)')
@@ -90,11 +90,10 @@ if __name__ == "__main__":
     for agent_name, model in models.items():
         if model.try_load(args.save_dir, agent_name, logger, checkpoint=args.checkpoint) == 0:
             logger.warning("No trained models found.")
+        model.eval()
 
     # Matrices for tracking messages/actions co-occurences
-    IC = np.zeros((args.vocab, args.num_actions))
-    A = np.zeros(args.num_actions)
-    M = np.zeros(args.vocab)
+    CIC = 0.
 
     logger.info("Starting rollout...")
     obs = env.reset()
@@ -109,11 +108,12 @@ if __name__ == "__main__":
         get_comm(env, messages, args.noise)
         perfect_message = preprocess_messages(messages, args.vocab, device=device)
 
-        # get speaker message
+       # get speaker message
         comm_value, comm_logp = models['agent-1'](perfect_message)
 
         message = torch.exp(comm_logp).multinomial(num_samples=1).data[0]
         messages['agent-0'] = message.cpu().numpy()[0]
+
         real_messages = preprocess_messages(messages, args.vocab, device=device)
 
         # select listener action
@@ -122,9 +122,25 @@ if __name__ == "__main__":
         actions['agent-0'] = action.cpu().numpy()[0]
 
         # Update measures here
-        IC[messages[f"agent-0"]][actions[f"agent-0"]] += 1
-        A[actions['agent-0']] += 1
-        M[messages['agent-0']] += 1
+        pas, pms = [0]*args.num_actions, [0]*args.vocab
+        pams = np.zeros((args.num_actions, args.vocab))
+        for a in range(args.num_actions):
+            for m in range(args.vocab):
+                pms[m] = pms[m] if pms[m] != 0 else torch.exp(comm_logp[0][m]).detach().cpu().numpy()
+                fake_messages = {'agent-1' : torch.tensor([m]).to(device)}
+
+                fake_transmission = preprocess_messages(fake_messages, args.vocab, device=device)
+                fake_value, fake_logp = models['agent-0']((states['agent-0'], fake_transmission))
+                
+                pams[a, m] = torch.exp(fake_logp[0][a]).detach().cpu().numpy() * pms[m]
+                pas[a] += pams[a, m] / args.num_actions
+        for a in range(args.num_actions):
+            for m in range(args.vocab):
+                if pams[a, m] * pas[a] * pms[m] != 0:
+                    CIC += pams[a, m] * np.log(pams[a, m] / (pas[a] * pms[m])) / args.horizon
+                else:
+                    logger.debug('zero value in probas')
+
 
         obs, rewards, dones, _ = env.step(actions)
 
@@ -136,16 +152,6 @@ if __name__ == "__main__":
         if args.render:
             env.render()
             time.sleep(0.5)
-
-        # fig.clf()
-
-        # map_with_agents = env.get_map_with_agents()
-        # rgb_arr = env.map_to_colors(map_with_agents)
-        # plt.imshow(rgb_arr, interpolation='nearest')
-        # plt.imshow(states['agent-0'].cpu().numpy().squeeze(0).transpose((1, 2, 0))/255, interpolation='nearest')
-
-        # fig.show()
-        # fig.canvas.draw()
 
         if dones["__all__"]:
             obs = env.reset()
@@ -161,11 +167,4 @@ if __name__ == "__main__":
     logger.info("Rollout done.")
     logger.info("Computing measures")
 
-    ic = 0
-    for m in range(args.vocab):
-        for a in range(args.num_actions):
-            ic += 0 if IC[m, a] == 0 else IC[m, a]/args.horizon * np.log(IC[m, a]/(np.sum(IC[m, :])*np.sum(IC[:, a])/args.horizon))
-    logger.info(f"IC: {ic}")
-    print(IC)
-    print(A)
-    print(M)
+    logger.info(f"CIC: {CIC}")
