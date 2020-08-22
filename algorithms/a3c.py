@@ -40,9 +40,28 @@ class ListenerPolicy(nn.Module):
         visual = F.relu(self.conv2(visual))
         visual = F.relu(self.conv3(visual))
         full_input = torch.cat((visual.view(-1, 128), messages), 1)
+        # full_input.retain_grad()
         hidden = self.hidden(full_input)
         value = self.critic_head(hidden)
-        logp = F.log_softmax(self.actor_head(hidden), dim=-1)
+        scores = self.actor_head(hidden)
+        # score_max_index = scores.argmax()
+        # score_max = scores[0, score_max_index]
+        # score_max.backward()
+        # saliency = full_input.grad.data.abs().numpy()
+        # visual_saliency = saliency[0, :-5].reshape(16, 8)/np.max(saliency)
+        # message_saliency = saliency[0, -5:].reshape(1, 5)/np.max(saliency)
+        # fig = plt.gcf()
+        # fig.clf()
+        # fig.add_subplot(1, 2, 1)
+        # plt.imshow(visual_saliency, cmap=plt.cm.hot, vmin=0, vmax=1.5)
+        # plt.axis('off')
+        # fig.add_subplot(1, 2, 2)
+        # plt.imshow(message_saliency, cmap=plt.cm.hot, vmin=0, vmax=1.5)
+        # plt.axis('off')
+        # fig.show()
+        # fig.canvas.draw()
+        # time.sleep(0.5)
+        logp = F.log_softmax(scores, dim=-1)
         return value, logp
 
     def try_load(self, save_dir, agent_name, logger=None, checkpoint=None):
@@ -192,10 +211,7 @@ def positive_signaling_loss(logps):
     average_policy_entropy = (average_policy * torch.log(average_policy)).sum()
 
     ps_loss = target_loss + 10 * average_policy_entropy * len(logps)
-    # print(target_loss)
-    # print(ps_loss)
-    # print()
-    return ps_loss
+    return 0.002 * ps_loss
 
 
 def train(shared_models, shared_optimizers, shared_schedulers, rank, args, info):
@@ -241,6 +257,8 @@ def train(shared_models, shared_optimizers, shared_schedulers, rank, args, info)
         for i in range(args.agents)
     }
     steps = 0
+
+    speaker_loss, listener_loss = 0, 0
 
     while int(info['frames'].item()) - start_frames < args.horizon or args.test:
 
@@ -387,7 +405,7 @@ def train(shared_models, shared_optimizers, shared_schedulers, rank, args, info)
                             torch.cat(actions_hist['agent-0'][-args.tmax:]),
                             np.asarray(rewards_hist['agent-0'][-args.tmax:]),
                             device=device)
-        eploss += loss.item()
+        listener_loss += loss.item()
         loss.backward()
         torch.nn.utils.clip_grad_norm_(models['agent-0'].parameters(), 40)
 
@@ -397,14 +415,14 @@ def train(shared_models, shared_optimizers, shared_schedulers, rank, args, info)
                             torch.cat(actions_hist['agent-1'][-args.tmax:]),
                             np.asarray(rewards_hist['agent-1'][-args.tmax:]),
                             device=device)
-        eploss += loss.item()
+        speaker_loss += loss.item()
         loss.backward(retain_graph=True)
         torch.nn.utils.clip_grad_norm_(models['agent-1'].parameters(), 40)
 
         if steps % args.batch_size == 0:
             ps_loss = positive_signaling_loss(torch.cat(logps_hist['agent-1']))
-            logger.debug('ps_loss:')
-            logger.debug(ps_loss)
+            logger.info(f'a3c_loss_listener: {listener_loss}, a3c_loss_speaker: {speaker_loss}, ps_loss: {ps_loss}')
+            speaker_loss, listener_loss = 0, 0
             ps_loss.backward()
             torch.nn.utils.clip_grad_norm_(models['agent-1'].parameters(), 40)
 
