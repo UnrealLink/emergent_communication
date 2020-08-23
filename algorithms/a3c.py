@@ -297,7 +297,7 @@ def train(shared_models, shared_optimizers, shared_schedulers, rank, args, info)
                     message = torch.exp(comm_logp).multinomial(num_samples=1).data[0]
                     messages['agent-1'] = message.cpu().numpy()[0]
             except Exception as e:
-                logger.error(states['agent-1'])
+                logger.error(e)
                 model_path = os.path.join(args.save_dir, f'model.speaker.error.tar')
                 torch.save(shared_models['agent-1'].state_dict(), model_path)
                 raise e
@@ -421,7 +421,8 @@ def train(shared_models, shared_optimizers, shared_schedulers, rank, args, info)
 
         if steps % args.batch_size == 0:
             ps_loss = positive_signaling_loss(torch.cat(logps_hist['agent-1']))
-            logger.info(f'a3c_loss_listener: {listener_loss}, a3c_loss_speaker: {speaker_loss}, ps_loss: {ps_loss}')
+            if args.rank == 0:
+                logger.info(f'a3c_loss_listener: {listener_loss}, a3c_loss_speaker: {speaker_loss}, ps_loss: {ps_loss}')
             speaker_loss, listener_loss = 0, 0
             ps_loss.backward()
             torch.nn.utils.clip_grad_norm_(models['agent-1'].parameters(), 40)
@@ -429,8 +430,6 @@ def train(shared_models, shared_optimizers, shared_schedulers, rank, args, info)
         if steps % args.batch_size == 0:
             for agent_name, model in models.items():
                 for param, shared_param in zip(models[agent_name].parameters(), shared_models[agent_name].parameters()):
-                    if agent_name == 'agent-1':
-                        logger.debug(param.grad)
                     if shared_param.grad is None:
                         shared_param._grad = param.grad  # sync gradients with shared model
                 shared_optimizers[agent_name].step()
