@@ -421,7 +421,7 @@ def train(shared_models, shared_optimizers, shared_schedulers, rank, args, info)
 
         if steps % args.batch_size == 0:
             ps_loss = positive_signaling_loss(torch.cat(logps_hist['agent-1']))
-            if args.rank == 0:
+            if rank == 0:
                 logger.info(f'a3c_loss_listener: {listener_loss}, a3c_loss_speaker: {speaker_loss}, ps_loss: {ps_loss}')
             speaker_loss, listener_loss = 0, 0
             ps_loss.backward()
