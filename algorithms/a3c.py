@@ -62,14 +62,16 @@ class A3CPolicy(nn.Module):
         # fig = plt.gcf()
         # fig.clf()
         # fig.add_subplot(1, 2, 1)
-        # plt.imshow(visual_saliency, cmap=plt.cm.hot, vmin=0, vmax=1.5)
+        # plt.imshow(visual_saliency, cmap=plt.cm.viridis, vmin=0, vmax=1)
         # plt.axis('off')
         # fig.add_subplot(1, 2, 2)
-        # plt.imshow(message_saliency, cmap=plt.cm.hot, vmin=0, vmax=1.5)
+        # plt.imshow(message_saliency, cmap=plt.cm.viridis, vmin=0, vmax=1)
         # plt.axis('off')
+        # plt.colorbar(pad=0.4)
+        # fig.savefig("/home/valou/Desktop/saliency2.pdf")
         # fig.show()
         # fig.canvas.draw()
-        # time.sleep(0.5)
+        # time.sleep(5)
         logp = F.log_softmax(scores, dim=-1)
         return value, logp
 
@@ -208,7 +210,7 @@ def train(shared_models, shared_optimizers, shared_schedulers, rank, args, info)
     }
 
     # openai baselines uses 40M frames...we'll use 80M
-    while info['frames'][0] <= args.horizon or args.test:
+    while info['frames'][0] - start_frames <= args.horizon or args.test:
         for agent_name, model in models.items():
             # sync with shared model
             model.load_state_dict(shared_models[agent_name].state_dict())
