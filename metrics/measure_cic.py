@@ -122,25 +122,26 @@ if __name__ == "__main__":
         actions['agent-0'] = action.cpu().numpy()[0]
 
         # Update measures here
-        pas, pms = [0]*args.num_actions, [0]*args.vocab
+        pas, pms = np.zeros(args.num_actions), np.zeros(args.vocab)
         pams = np.zeros((args.num_actions, args.vocab))
-        for a in range(args.num_actions):
-            for m in range(args.vocab):
-                pms[m] = pms[m] if pms[m] != 0 else torch.exp(comm_logp[0][m]).detach().cpu().numpy()
-                fake_messages = {'agent-1' : torch.tensor([m]).to(device)}
-
-                fake_transmission = preprocess_messages(fake_messages, args.vocab, device=device)
-                fake_value, fake_logp = models['agent-0']((states['agent-0'], fake_transmission))
-                
-                pams[a, m] = torch.exp(fake_logp[0][a]).detach().cpu().numpy() * pms[m]
-                pas[a] += pams[a, m] / args.num_actions
+        for m in range(args.vocab):
+            pms[m] = pms[m] if pms[m] != 0 else torch.exp(comm_logp[0][m]).item()
+            fake_messages = {'agent-0' : torch.tensor([m]).to(device)}
+            fake_transmission = preprocess_messages(fake_messages, args.vocab, device=device)
+            fake_value, fake_logp = models['agent-0']((states['agent-0'], fake_transmission))
+            for a in range(args.num_actions):
+                pams[a, m] = torch.exp(fake_logp[0][a]).item() * pms[m]
+                pas[a] += pams[a, m]
+        # print(pas)
+        # print(pms)
+        # print(pams)
+        # print()
         for a in range(args.num_actions):
             for m in range(args.vocab):
                 if pams[a, m] * pas[a] * pms[m] != 0:
                     CIC += pams[a, m] * np.log(pams[a, m] / (pas[a] * pms[m])) / args.horizon
                 else:
                     logger.debug('zero value in probas')
-
 
         obs, rewards, dones, _ = env.step(actions)
 
