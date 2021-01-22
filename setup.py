@@ -2,6 +2,6 @@ from setuptools import setup
 
 
 setup(
-    name='custom_ssd',
+    name='emergent_communication',
     version='0.0.1',
 )

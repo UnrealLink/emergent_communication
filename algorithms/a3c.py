@@ -74,7 +74,12 @@ class ListenerPolicy(nn.Module):
             ckpts = [int(s.split('.')[-2]) for s in paths]
             index = ckpts.index(checkpoint) if checkpoint is not None else np.argmax(ckpts)
             step = ckpts[index]
-            self.load_state_dict(torch.load(paths[index]))
+            try:
+                self.load_state_dict(torch.load(paths[index]))
+            except Exception as e:
+                if logger is not None:
+                    logger.error(e)
+                step = 0
         if logger is not None:
             if step == 0:
                 logger.info("\tno saved models")
@@ -117,7 +122,12 @@ class SpeakerPolicy(nn.Module):
             ckpts = [int(s.split('.')[-2]) for s in paths]
             index = ckpts.index(checkpoint) if checkpoint is not None else np.argmax(ckpts)
             step = ckpts[index]
-            self.load_state_dict(torch.load(paths[index]))
+            try:
+                self.load_state_dict(torch.load(paths[index]))
+            except Exception as e:
+                if logger is not None:
+                    logger.error(e)
+                step = 0
         if logger is not None:
             if step == 0:
                 logger.info("\tno saved models")
@@ -421,8 +431,8 @@ def train(shared_models, shared_optimizers, shared_schedulers, rank, args, info)
 
         if steps % args.batch_size == 0:
             ps_loss = positive_signaling_loss(torch.cat(logps_hist['agent-1']))
-            if rank == 0:
-                logger.info(f'a3c_loss_listener: {listener_loss}, a3c_loss_speaker: {speaker_loss}, ps_loss: {ps_loss}')
+            # if rank == 0:
+            #     logger.info(f'a3c_loss_listener: {listener_loss}, a3c_loss_speaker: {speaker_loss}, ps_loss: {ps_loss}')
             speaker_loss, listener_loss = 0, 0
             ps_loss.backward()
             torch.nn.utils.clip_grad_norm_(models['agent-1'].parameters(), 40)
