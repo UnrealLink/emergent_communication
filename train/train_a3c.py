@@ -36,9 +36,9 @@ def get_args():
     Get arguments
     """
     parser = argparse.ArgumentParser(description=None)
-    parser.add_argument('--env', default='finder', type=str, help='environment name')
+    parser.add_argument('--env', default='target', type=str, help='environment name')
     parser.add_argument('--agents', default=1, type=int, help='number of agents in environment')
-    parser.add_argument('--processes', default=12, type=int, help='number of processes to train with')
+    parser.add_argument('--processes', default=8, type=int, help='number of processes to train with')
     parser.add_argument('--render', default=False, action='store_true', help='renders the atari environment')
     parser.add_argument('--test', default=False, action='store_true', help='sets lr=0, chooses most likely actions')
     parser.add_argument('--tmax', default=5, type=int, help='number of steps for A3C loss')

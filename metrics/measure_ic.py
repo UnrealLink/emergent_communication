@@ -166,4 +166,3 @@ if __name__ == "__main__":
         for a in range(args.num_actions):
             ic += 0 if IC[m, a] == 0 else IC[m, a]/args.horizon * np.log(IC[m, a]/(np.sum(IC[m, :])*np.sum(IC[:, a])/args.horizon))
     logger.info(f"IC: {ic}")
-    print(ic)
