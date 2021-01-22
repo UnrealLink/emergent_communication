@@ -72,7 +72,12 @@ class A3CPolicy(nn.Module):
             ckpts = [int(s.split('.')[-2]) for s in paths]
             index = np.argmax(ckpts)
             step = ckpts[index]
-            self.load_state_dict(torch.load(paths[index]))
+            try:
+                self.load_state_dict(torch.load(paths[index]))
+            except Exception as e:
+                if logger is not None:
+                    logger.error(e)
+                step = 0
         if logger is not None:
             if step == 0:
                 logger.info("\tno saved models")
