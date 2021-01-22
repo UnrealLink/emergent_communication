@@ -36,9 +36,9 @@ def get_args():
     Get arguments
     """
     parser = argparse.ArgumentParser(description=None)
-    parser.add_argument('--env', default='finder', type=str, help='environment name')
+    parser.add_argument('--env', default='target', type=str, help='environment name')
     parser.add_argument('--agents', default=1, type=int, help='number of agents in environment')
-    parser.add_argument('--processes', default=12, type=int, help='number of processes to train with')
+    parser.add_argument('--processes', default=8, type=int, help='number of processes to train with')
     parser.add_argument('--render', default=False, action='store_true', help='renders the atari environment')
     parser.add_argument('--test', default=False, action='store_true', help='sets lr=0, chooses most likely actions')
     parser.add_argument('--rnn-steps', default=20, type=int, help='steps to train LSTM over')
@@ -76,9 +76,9 @@ if __name__ == "__main__":
 
     dir_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
     if args.save is None:
-        args.save_dir = os.path.join(dir_path, f'saves/{args.env}')
+        args.save_dir = os.path.join(dir_path, os.path.join("saves", args.env))
     else:
-        args.save_dir = os.path.join(dir_path, f'saves/{args.save}')
+        args.save_dir = os.path.join(dir_path, os.path.join("saves", args.save))
 
     if args.view_size == -1:
         args.view_size = None
