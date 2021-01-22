@@ -36,9 +36,9 @@ def get_args():
     Get arguments
     """
     parser = argparse.ArgumentParser(description=None)
-    parser.add_argument('--env', default='finder', type=str, help='environment name')
+    parser.add_argument('--env', default='target', type=str, help='environment name')
     parser.add_argument('--agents', default=1, type=int, help='number of agents in environment')
-    parser.add_argument('--processes', default=12, type=int, help='number of processes to train with')
+    parser.add_argument('--processes', default=8, type=int, help='number of processes to train with')
     parser.add_argument('--render', default=False, action='store_true', help='renders the atari environment')
     parser.add_argument('--test', default=False, action='store_true', help='sets lr=0, chooses most likely actions')
     parser.add_argument('--rnn-steps', default=20, type=int, help='steps to train LSTM over')
@@ -50,7 +50,7 @@ def get_args():
     parser.add_argument('--horizon', default=8e7, type=float, help='max number of steps')
     parser.add_argument('--hidden', default=64, type=int, help='hidden size of GRU')
     parser.add_argument('--vocab', default=5, type=int, help='vocabulary size for communication')
-    parser.add_argument('--view-size', default=-1, type=int, help='view size of agents (0 takes env default)')
+    parser.add_argument('--view-size', default=-1, type=int, help='view size of agents (-1 takes env default)')
     parser.add_argument('--noise', default=0., type=float, help='noise in comm channel')
     parser.add_argument('--save', default=None, type=str, help='save directory name')
     parser.add_argument('--cpu-only', default=False, action='store_true', help='prevent gpu usage')

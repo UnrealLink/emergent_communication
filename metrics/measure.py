@@ -35,13 +35,13 @@ def get_args():
     Get arguments
     """
     parser = argparse.ArgumentParser(description=None)
-    parser.add_argument('--env', default='finder', type=str, help='environment name')
-    parser.add_argument('--agents', default=5, type=int, help='number of agents in environment')
+    parser.add_argument('--env', default='target', type=str, help='environment name')
+    parser.add_argument('--agents', default=1, type=int, help='number of agents in environment')
     parser.add_argument('--horizon', default=1000, type=int, help='number of steps to measure on')
     parser.add_argument('--seed', default=1, type=int, help='set random seed')
     parser.add_argument('--vocab', default=5, type=int, help='vocabulary size for communication')
-    parser.add_argument('--view-size', default=0, type=int, help='view size of agents (0 takes env default)')
-    parser.add_argument('--hidden', default=128, type=int, help='hidden size of GRU')
+    parser.add_argument('--view-size', default=-1, type=int, help='view size of agents (-1 takes env default)')
+    parser.add_argument('--hidden', default=64, type=int, help='hidden size of GRU')
     parser.add_argument('--noise', default=0., type=float, help='noise in comm channel')
     parser.add_argument('--save', default=None, type=str, help='save directory name')
     parser.add_argument('--checkpoint', default=None, type=int, help='checkpoint to load in save dir (default max)')
@@ -67,7 +67,7 @@ if __name__ == "__main__":
     else:
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-    if args.view_size == 0:
+    if args.view_size == -1:
         args.view_size = None
 
     logger = logging.getLogger('Measure')
@@ -166,6 +166,4 @@ if __name__ == "__main__":
         for a in range(args.num_actions):
             ic += 0 if IC[m, a] == 0 else IC[m, a]/args.horizon * np.log(IC[m, a]/(np.sum(IC[m, :])*np.sum(IC[:, a])/args.horizon))
     logger.info(f"IC: {ic}")
-    print(IC)
-    print(A)
-    print(M)
+

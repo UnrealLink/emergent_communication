@@ -2,10 +2,12 @@
 DQN Agent implementation, inspired from https://pytorch.org/tutorials/intermediate/reinforcement_q_learning.html
 """
 
+import os
 import gym
 import math
 import random
 import logging
+import glob
 import numpy as np
 from collections import namedtuple
 
@@ -96,7 +98,7 @@ class DQNAgent():
     DQN Agent
     """
 
-    def __init__(self, agent):
+    def __init__(self, agent, lr=0.01):
         self.n_actions = agent.action_space.n
         w, h, c = agent.observation_space.shape
         self.input_size = (w, h)
@@ -206,7 +208,7 @@ class DQNAgent():
         if path:
             torch.save(self.policy_net.state_dict(), path)
         else:
-            torch.save(self.policy_net.state_dict(), f'saves/finder_model_{self.steps_done}.pth')
+            torch.save(self.policy_net.state_dict(), f'saves/dqn_model_{self.steps_done}.pth')
 
     def load(self, path):
         self.policy_net.load_state_dict(torch.load(path))
@@ -221,6 +223,28 @@ class DQNAgent():
         self.policy_net.train()
         self.last_action = None
         self.last_state = None
+
+    def try_load(self, save_dir, agent_name, logger=None, checkpoint=None):
+        """
+        Try to load saved models from save_dir
+        """
+        paths = glob.glob(os.path.join(save_dir, f'*.{agent_name}.*.tar'))
+        step = 0
+        if len(paths) > 0:
+            ckpts = [int(s.split('.')[-2]) for s in paths]
+            index = ckpts.index(checkpoint) if checkpoint is not None else np.argmax(ckpts)
+            step = ckpts[index]
+            try:
+                self.load(paths[index])
+            except Exception as e:
+                if logger is not None:
+                    logger.error(e)
+                step = 0
+        if logger is not None:
+            if step == 0:
+                logger.info("\tno saved models")
+            else:
+                logger.info("\tloaded model: {}".format(paths[index]))
 
 
 # Utils
