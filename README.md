@@ -20,8 +20,8 @@ To try training agents on the finder environment using DQN:
 Each experiment done in the paper has its own separate branch:
 
     - solo_agent: only the listener is trained, receiving perfect messages from a hard-coded speaker
-    - easy_speaker: a simple mlp speaker is added, and take the perfect message as input
-    - easy_speaker_bias: a positive signalling bias is added to help train the speaker
+    - easy_speaker: a simple mlp speaker is added, taking the perfect message as input
+    - easy_speaker_bias: a positive signalling bias is used to help train the speaker
     - speaker_bias: the speaker now receives only the visual input
 
 ## Credits
